@@ -1,0 +1,9 @@
+ARC_START
+LABEL hi
+PUSH_STR hi there i really like you
+PRINT
+LABEL here
+PUSH_STR if you see this twice fix your label preprocessing
+JUMP_LABEL end
+LABEL end
+ARC_END
