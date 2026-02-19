@@ -109,3 +109,39 @@ COMPARE <cmp>  ; auto pushes true or false
 \end{lstlisting}
 
 \end{document}
+
+\section{Conditional Operations}
+
+\subsection{\texttt{if} statements}
+
+An \texttt{if} statement checks its condition and returns \texttt{true} or \texttt{false} onto the stack. If \texttt{true}, it jumps to the specified label; otherwise, it increments the instruction pointer.
+
+\subsubsection{Example: \texttt{if x > 5 jump somewhere}}
+\begin{lstlisting}
+LOAD x
+PUSH_INT 5
+COMPARE GT        ; pops x and 5, pushes true/false
+JUMP_IF somewhere ; pops boolean, jumps if true, else ip++
+\end{lstlisting}
+
+\subsubsection{Example: \texttt{if-else} pattern}
+\begin{lstlisting}
+; if x > 5:
+LOAD x
+PUSH_INT 5
+COMPARE GT
+JUMP_IF then_branch
+
+; else code here
+; ...
+JUMP end_if
+
+LABEL then_branch
+; if code here
+; ...
+LABEL end_then
+
+LABEL end_if
+\end{lstlisting}
+
+\end{document}
