@@ -55,8 +55,6 @@ fn main() {
         np += 1;
     }
 
-    println!("{:?}", labels);
-
     while ip < splitcode.len() {
         let bline: Vec<&str> = splitcode[ip].split_whitespace().collect();
         match bline[0] {
