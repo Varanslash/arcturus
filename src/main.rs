@@ -31,50 +31,98 @@ fn main() {
     let mut data: HashMap<String, i64> = HashMap::new();
     let mut labels = HashMap::new();
     let mut argv: Vec<String> = env::args().collect();
-    let mut code = fs::read_to_string(argv[1].clone());
+    let code: Vec<u8> = fs::read(argv[1].clone()).expect("KernelError: Byte Read Failure");
 
-    if !code.as_ref().expect("MiscError: ARC_START Check Failure").clone().starts_with("ARC_START") || 
-       !code.as_ref().expect("MiscError: ARC_END Check Failure").clone().ends_with("ARC_END") {
+    if !(code[0] == 0xF0) || !(*code.last().expect("KernelError: {{ || }} check failure") == 0xF1) {
         println!("SyntaxError: No starting {{ or ending }}");
         return;
     }
 
-    let mut binding = code.expect("MiscError: Splitting Bytecode Failed");
-    let splitcode: Vec<&str> = binding.lines().collect();
     let mut ip = 0;
     let mut np = 0;
 
-    for line in &splitcode {
-        let sline: Vec<&str> = line.split_whitespace().collect();
-        match sline[0] {
-            "LABEL" => {
-                labels.insert(String::from(sline[1]), np);
+/*
+    ADD       ; 0x01
+    SUB       ; 0x02
+    MUL       ; 0x03
+    DIV       ; 0x04
+    MOD       ; 0x05
+    STORE     ; 0x10
+    PUSH_INT  ; 0x11
+    PUSH_STR  ; 0x12
+    PUSH_BOOL ; 0x13
+    PUSH_DEC  ; 0x14
+    LOAD      ; 0x15
+    COMPARE   ; 0xC0
+    JUMP_IF   ; 0xC1
+    CALL_IF   ; 0xC2
+    EQ        ; 0xC3
+    GE        ; 0xC4
+    GT        ; 0xC5
+    LE        ; 0xC6
+    LT        ; 0xC7
+    NE        ; 0xC8
+    AND       ; 0xD0
+    OR        ; 0xD1
+    NOT       ; 0xD2
+    XOR       ; 0xD3
+    LABEL     ; 0xD4
+    PRINT     ; 0xE0
+    INPUT     ; 0xE1
+    CALL      ; 0xE2
+    RET       ; 0xE3
+    JUMP      ; 0xE4
+    ARC_START ; 0xF0
+    ARC_END   ; 0xF1
+    ARC_DELIM ; 0xF2
+*/
+
+    for line in &code {
+        match code[np] {
+            0xD4 => {
+                labels.insert(code[np + 1], np);
+                np += 2
             }
-            _ => {}
+            _ => { np += 1 }
         }
-        np += 1;
     }
 
-    while ip < splitcode.len() {
-        let bline: Vec<&str> = splitcode[ip].split_whitespace().collect();
-        match bline[0] {
-            "JUMP_LABEL" => {
-                ip = *labels.get(bline[1]).unwrap();
+    println!("{:?}", labels);
+
+    while ip < code.len() {
+        match code[ip] {
+            0xE4 => {
+                ip = *labels.get(&code[ip + 1]).unwrap();
             }
-            "PRINT" => {
+            0xE0 => {
                 println!("{}", stack.pop().unwrap());
-                ip += 1
+                ip += 1;
             }
-            "PUSH_INT" => {
-                stack.push(Int(bline[1].parse::<i64>().expect("well damn")));
-                ip += 1
+            0x11 => {
+                stack.push(Int(code[ip + 1].into()));
+                ip += 2;
             }
-            "PUSH_STR" => {
-                stack.push(String(bline[1..].join(" ").parse::<String>().expect("well damn")));
-                ip += 1
+            0x12 => {
+                let start = ip + 2;
+                let string_bytes = &code[start..start + code[ip + 1] as usize];
+                
+                let s = String::from_utf8(string_bytes.to_vec())
+                    .expect("KernelError: Invalid UTF-8");
+                stack.push(String(s));
+                ip += 2 + code[ip + 1] as usize;
             }
-            "ARC_START" | "ARC_END" | "ARC_DELIM" | "LABEL" => { ip += 1 }
-            _ => {}
+            0x13 => {
+                stack.push(Bool(code[ip] != 0));
+                ip += 2;
+            }
+            0x14 => {
+                stack.push(Float(code[ip + 1].into()));
+                ip += 2;
+            }
+            0xF0 | 0xF2 => { ip += 1; }
+            0xF1 => { return; }
+            0xD4 => { ip += 2 }
+            _ => { println!("KernelError: Unknown byte {} at index {}", code[ip], ip); return; }
         }
     }
 }
