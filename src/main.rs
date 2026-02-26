@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::fs;
 use std::env;
 use std::string::String;
@@ -91,18 +92,93 @@ fn main() {
 
     while ip < code.len() {
         match code[ip] {
-            0xE4 => {
-                ip = *labels.get(&code[ip + 1]).unwrap();
+            0x01 => { // ADD
+                let count = code[ip + 1];
+                let mut sum = 0i64;
+                for _ in 0..count {
+                    match stack.pop().unwrap() {
+                        Int(n) => sum += n,
+                        _ => panic!("ADD expects integers")
+                    }
+                }
+                stack.push(Int(sum));
+                ip += 2;
             }
-            0xE0 => {
+            0x02 => { // SUB
+                let count = code[ip + 1];
+                let mut diff = 0i64;
+                for _ in 0..count {
+                    match stack.pop().unwrap() {
+                        Int(n) => diff -= n,
+                        _ => panic!("SUB expects integers")
+                    }
+                }
+                stack.push(Int(diff));
+                ip += 2;
+            }
+            0x03 => { // MUL
+                let count = code[ip + 1];
+                let mut product = 1i64;
+                for _ in 0..count {
+                    match stack.pop().unwrap() {
+                        Int(n) => product *= n,
+                        _ => panic!("MUL expects integers")
+                    }
+                }
+                stack.push(Int(product));
+                ip += 2;
+            }
+            0x04 => { // DIV
+                let count = code[ip + 1];
+                let mut quotient = 1i64;
+                for _ in 0..count {
+                    match stack.pop().unwrap() {
+                        Int(n) => quotient /= n,
+                        _ => panic!("DIV expects integers")
+                    }
+                }
+                stack.push(Int(quotient));
+                ip += 2;
+            }
+            0x05 => { // MOD
+                let count = code[ip + 1];
+                let mut remainder = 1i64;
+                for _ in 0..count {
+                    match stack.pop().unwrap() {
+                        Int(n) => remainder %= n,
+                        _ => panic!("MOD expects integers")
+                    }
+                }
+                stack.push(Int(remainder));
+                ip += 2;
+            }
+            0xE2 => { // CALL
+                let len = code[ip + 1] as usize;
+                let label_bytes = &code[ip + 2..ip + 2 + len];
+                let label = String::from_utf8(label_bytes.to_vec()).unwrap();
+                callstack.push((ip + 2 + len) as i64);  // return address
+                ip = *labels.get(&label).unwrap();
+            }
+            0xE3 => { // RET
+                ip = callstack.pop().unwrap() as usize;
+            }
+            0xE4 => { // JUMP
+                let len = code[ip + 1] as usize;
+                let label_bytes = &code[ip + 2..ip + 2 + len];
+                let label = String::from_utf8(label_bytes.to_vec()).unwrap();
+                ip = *labels.get(&label).unwrap();
+            }
+            0xE0 => { // PRINT
                 println!("{}", stack.pop().unwrap());
                 ip += 1;
             }
-            0x11 => {
-                stack.push(Int(code[ip + 1].into()));
-                ip += 2;
+            0x11 => { // PUSH_INT
+                let bytes: [u8; 8] = code[ip+1..ip+9].try_into().expect("KernelError: Byte unwrapping failure");
+                let value = i64::from_le_bytes(bytes);
+                stack.push(Int(value));
+                ip += 9;
             }
-            0x12 => {
+            0x12 => { // PUSH_STR
                 let start = ip + 2;
                 let string_bytes = &code[start..start + code[ip + 1] as usize];
                 
@@ -111,17 +187,20 @@ fn main() {
                 stack.push(String(s));
                 ip += 2 + code[ip + 1] as usize;
             }
-            0x13 => {
+            0x13 => { // PUSH_BOOL
                 stack.push(Bool(code[ip] != 0));
                 ip += 2;
             }
-            0x14 => {
-                stack.push(Float(code[ip + 1].into()));
-                ip += 2;
+            0x14 => { // PUSH_DEC
+                let bytes: [u8; 8] = code[ip..ip+9].try_into().expect("KernelError: Byte unwrapping failure");
+                let value = f64::from_le_bytes(bytes);
+                stack.push(Float(value));
+                ip += 9;
             }
-            0xF0 | 0xF2 => { ip += 1; }
-            0xF1 => { return; }
-            0xD4 => { ip += 2 }
+            0xF0 | 0xF2 => { ip += 1; } // ARC_START/ARC_DELIM
+            0xF1 => { return; } // ARC_END
+            0x00 => { ip += 1 } // NOP
+            0xD4 => { let len = code[ip + 1] as usize; ip += 2 + len } // LABEL
             _ => { println!("KernelError: Unknown byte {} at index {}", code[ip], ip); return; }
         }
     }
