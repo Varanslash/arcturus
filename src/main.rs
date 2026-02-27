@@ -53,7 +53,11 @@ fn main() {
     PUSH_STR  ; 0x12
     PUSH_BOOL ; 0x13
     PUSH_DEC  ; 0x14
-    LOAD      ; 0x15
+    LOAD_INT  ; 0x15
+    LOAD_STR  ; 0x16
+    LOAD_BOOL ; 0x17
+    LOAD_DEC  ; 0x18
+    VAR       ; 0x19
     COMPARE   ; 0xC0
     JUMP_IF   ; 0xC1
     CALL_IF   ; 0xC2
@@ -81,8 +85,10 @@ fn main() {
     for line in &code {
         match code[np] {
             0xD4 => {
-                labels.insert(code[np + 1], np);
-                np += 2
+                let label_name_bytes = &code[np + 2..np + 2 + code[np + 1] as usize];
+                let label_name = String::from_utf8(label_name_bytes.to_vec()).unwrap();
+                labels.insert(label_name, np);
+                np += 2 + code[np + 1] as usize;
             }
             _ => { np += 1 }
         }
@@ -104,6 +110,7 @@ fn main() {
                 stack.push(Int(sum));
                 ip += 2;
             }
+
             0x02 => { // SUB
                 let count = code[ip + 1];
                 let mut diff = 0i64;
@@ -116,6 +123,7 @@ fn main() {
                 stack.push(Int(diff));
                 ip += 2;
             }
+
             0x03 => { // MUL
                 let count = code[ip + 1];
                 let mut product = 1i64;
@@ -128,6 +136,7 @@ fn main() {
                 stack.push(Int(product));
                 ip += 2;
             }
+
             0x04 => { // DIV
                 let count = code[ip + 1];
                 let mut quotient = 1i64;
@@ -140,6 +149,7 @@ fn main() {
                 stack.push(Int(quotient));
                 ip += 2;
             }
+
             0x05 => { // MOD
                 let count = code[ip + 1];
                 let mut remainder = 1i64;
@@ -152,6 +162,35 @@ fn main() {
                 stack.push(Int(remainder));
                 ip += 2;
             }
+
+            0x15 => { // LOAD_INT
+                let var_name_bytes = &code[ip + 1..ip + 1 + code[ip + 1] as usize];
+                let var_name = String::from_utf8(var_name_bytes.to_vec()).unwrap();
+                stack.push(Int(*data.get(&var_name).unwrap()));
+                ip += 2 + code[ip + 1] as usize;
+            }
+
+            0x16 => { // LOAD_STR
+                let var_name_bytes = &code[ip + 1..ip + 1 + code[ip + 1] as usize];
+                let var_name = String::from_utf8(var_name_bytes.to_vec()).unwrap();
+                stack.push(String((*data.get(&var_name).unwrap()).to_string()));
+                ip += 2 + code[ip + 1] as usize;
+            }
+
+            0x17 => { // LOAD_BOOL
+                let var_name_bytes = &code[ip + 1..ip + 1 + code[ip + 1] as usize];
+                let var_name = String::from_utf8(var_name_bytes.to_vec()).unwrap();
+                stack.push(Bool(*data.get(&var_name).unwrap() != 0));
+                ip += 2 + code[ip + 1] as usize;
+            }
+
+            0x18 => { // LOAD_DEC
+                let var_name_bytes = &code[ip + 1..ip + 1 + code[ip + 1] as usize];
+                let var_name = String::from_utf8(var_name_bytes.to_vec()).unwrap();
+                stack.push(Float((*data.get(&var_name).unwrap()) as f64));
+                ip += 2 + code[ip + 1] as usize;
+            }
+
             0xE2 => { // CALL
                 let len = code[ip + 1] as usize;
                 let label_bytes = &code[ip + 2..ip + 2 + len];
@@ -159,25 +198,30 @@ fn main() {
                 callstack.push((ip + 2 + len) as i64);  // return address
                 ip = *labels.get(&label).unwrap();
             }
+
             0xE3 => { // RET
                 ip = callstack.pop().unwrap() as usize;
             }
+
             0xE4 => { // JUMP
                 let len = code[ip + 1] as usize;
                 let label_bytes = &code[ip + 2..ip + 2 + len];
                 let label = String::from_utf8(label_bytes.to_vec()).unwrap();
                 ip = *labels.get(&label).unwrap();
             }
+
             0xE0 => { // PRINT
                 println!("{}", stack.pop().unwrap());
                 ip += 1;
             }
+
             0x11 => { // PUSH_INT
                 let bytes: [u8; 8] = code[ip+1..ip+9].try_into().expect("KernelError: Byte unwrapping failure");
                 let value = i64::from_le_bytes(bytes);
                 stack.push(Int(value));
                 ip += 9;
             }
+
             0x12 => { // PUSH_STR
                 let start = ip + 2;
                 let string_bytes = &code[start..start + code[ip + 1] as usize];
@@ -187,20 +231,27 @@ fn main() {
                 stack.push(String(s));
                 ip += 2 + code[ip + 1] as usize;
             }
+
             0x13 => { // PUSH_BOOL
                 stack.push(Bool(code[ip] != 0));
                 ip += 2;
             }
+
             0x14 => { // PUSH_DEC
                 let bytes: [u8; 8] = code[ip..ip+9].try_into().expect("KernelError: Byte unwrapping failure");
                 let value = f64::from_le_bytes(bytes);
                 stack.push(Float(value));
                 ip += 9;
             }
+
             0xF0 | 0xF2 => { ip += 1; } // ARC_START/ARC_DELIM
+
             0xF1 => { return; } // ARC_END
+
             0x00 => { ip += 1 } // NOP
+
             0xD4 => { let len = code[ip + 1] as usize; ip += 2 + len } // LABEL
+
             _ => { println!("KernelError: Unknown byte {} at index {}", code[ip], ip); return; }
         }
     }
