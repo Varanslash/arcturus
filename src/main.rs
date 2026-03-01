@@ -31,7 +31,7 @@ fn main() {
     let mut callstack: Vec<i64> = vec![];
     let mut data: HashMap<String, i64> = HashMap::new();
     let mut labels = HashMap::new();
-    let mut argv: Vec<String> = env::args().collect();
+    let argv: Vec<String> = env::args().collect();
     let code: Vec<u8> = fs::read(argv[1].clone()).expect("KernelError: Byte Read Failure");
 
     if !(code[0] == 0xF0) || !(*code.last().expect("KernelError: {{ || }} check failure") == 0xF1) {
@@ -57,7 +57,6 @@ fn main() {
     LOAD_STR  ; 0x16
     LOAD_BOOL ; 0x17
     LOAD_DEC  ; 0x18
-    VAR       ; 0x19
     COMPARE   ; 0xC0
     JUMP_IF   ; 0xC1
     CALL_IF   ; 0xC2
@@ -82,7 +81,7 @@ fn main() {
     ARC_DELIM ; 0xF2
 */
 
-    for line in &code {
+    for _line in &code {
         match code[np] {
             0xD4 => {
                 let label_name_bytes = &code[np + 2..np + 2 + code[np + 1] as usize];
@@ -104,7 +103,7 @@ fn main() {
                 for _ in 0..count {
                     match stack.pop().unwrap() {
                         Int(n) => sum += n,
-                        _ => panic!("ADD expects integers")
+                        _ => panic!("KernelError: ADD expects integers")
                     }
                 }
                 stack.push(Int(sum));
@@ -117,7 +116,7 @@ fn main() {
                 for _ in 0..count {
                     match stack.pop().unwrap() {
                         Int(n) => diff -= n,
-                        _ => panic!("SUB expects integers")
+                        _ => panic!("KernelError: SUB expects integers")
                     }
                 }
                 stack.push(Int(diff));
@@ -130,7 +129,7 @@ fn main() {
                 for _ in 0..count {
                     match stack.pop().unwrap() {
                         Int(n) => product *= n,
-                        _ => panic!("MUL expects integers")
+                        _ => panic!("KernelError: MUL expects integers")
                     }
                 }
                 stack.push(Int(product));
@@ -143,7 +142,7 @@ fn main() {
                 for _ in 0..count {
                     match stack.pop().unwrap() {
                         Int(n) => quotient /= n,
-                        _ => panic!("DIV expects integers")
+                        _ => panic!("KernelError: DIV expects integers")
                     }
                 }
                 stack.push(Int(quotient));
@@ -156,7 +155,7 @@ fn main() {
                 for _ in 0..count {
                     match stack.pop().unwrap() {
                         Int(n) => remainder %= n,
-                        _ => panic!("MOD expects integers")
+                        _ => panic!("KernelError: MOD expects integers")
                     }
                 }
                 stack.push(Int(remainder));
@@ -242,6 +241,114 @@ fn main() {
                 let value = f64::from_le_bytes(bytes);
                 stack.push(Float(value));
                 ip += 9;
+            }
+
+            0x10 => { // STORE
+                let var_name_bytes = &code[ip + 2..ip + 2 + code[ip + 1] as usize];
+                let var_name = String::from_utf8(var_name_bytes.to_vec()).unwrap();
+                let value = match stack.pop().unwrap() {
+                    Int(n) => n,
+                    Float(f) => f as i64,
+                    String(s) => s.parse::<i64>().unwrap(),
+                    Bool(b) => if b { 1 } else { 0 },
+                };
+                data.insert(var_name, value);
+                ip += 2 + code[ip + 1] as usize;
+            }
+
+            0xC0 => { // COMPARE
+                let op = code[ip + 1];
+                let b = stack.pop().unwrap();
+                let a = stack.pop().unwrap();
+                let result = match (a, b) {
+                    (Int(a), Int(b)) => match op {
+                        0xC3 => a == b, // EQ
+                        0xC4 => a >= b, // GE
+                        0xC5 => a > b,  // GT
+                        0xC6 => a <= b, // LE
+                        0xC7 => a < b,  // LT
+                        0xC8 => a != b, // NE
+                        _ => panic!("KernelError: Unknown comparison operator")
+                    },
+                    _ => panic!("KernelError: COMPARE expects integers")
+                };
+                stack.push(Bool(result));
+                ip += 2;
+            }
+
+            0xC1 => { // JUMP_IF
+                let len = code[ip + 1] as usize;
+                let label_bytes = &code[ip + 2..ip + 2 + len];
+                let label = String::from_utf8(label_bytes.to_vec()).unwrap();
+                if let Bool(true) = stack.pop().unwrap() {
+                    ip = *labels.get(&label).unwrap();
+                }
+                else {
+                    ip += 2 + len;
+                }
+            }
+
+            0xC2 => { // CALL_IF
+                let len = code[ip + 1] as usize;
+                let label_bytes = &code[ip + 2..ip + 2 + len];
+                let label = String::from_utf8(label_bytes.to_vec()).unwrap();
+                if let Bool(true) = stack.pop().unwrap() {
+                    callstack.push((ip + 2 + len) as i64);  // return address
+                    ip = *labels.get(&label).unwrap();
+                }
+                else {
+                    ip += 2 + len;
+                }
+            }
+
+            0xD0 => { // AND
+                let b = stack.pop().unwrap();
+                let a = stack.pop().unwrap();
+                let result = match (a, b) {
+                    (Bool(a), Bool(b)) => a && b,
+                    _ => panic!("KernelError: AND expects booleans")
+                };
+                stack.push(Bool(result));
+                ip += 1;
+            }
+
+            0xD1 => { // OR
+                let b = stack.pop().unwrap();
+                let a = stack.pop().unwrap();
+                let result = match (a, b) {
+                    (Bool(a), Bool(b)) => a || b,
+                    _ => panic!("KernelError: OR expects booleans")
+                };
+                stack.push(Bool(result));
+                ip += 1;
+            }
+
+            0xD2 => { // NOT
+                let a = stack.pop().unwrap();
+                let result = match a {
+                    Bool(a) => !a,
+                    _ => panic!("KernelError: NOT expects a boolean")
+                };
+                stack.push(Bool(result));
+                ip += 1;
+            }
+
+            0xD3 => { // XOR
+                let b = stack.pop().unwrap();
+                let a = stack.pop().unwrap();
+                let result = match (a, b) {
+                    (Bool(a), Bool(b)) => a ^ b,
+                    _ => panic!("KernelError: XOR expects booleans")
+                };
+                stack.push(Bool(result));
+                ip += 1;
+            }
+
+            0xE1 => { // INPUT
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input).expect("KernelError: Input failure");
+                stack.push(String(input.trim().to_string()));
+                ip += 1;
             }
 
             0xF0 | 0xF2 => { ip += 1; } // ARC_START/ARC_DELIM
