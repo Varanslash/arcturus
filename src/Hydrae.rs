@@ -120,7 +120,7 @@ fn lex(source: String, debug: bool) -> Vec<Token> {
                     }
                 }
 
-                ch if !"+-*/%&|^!=><".contains(ch) && state == 2 => {
+                ch if !"+-*/%&|^!=><".contains(ch) && state == 2 && !current.is_empty() => {
                     tokens.push(Token::Punct(current.clone()));
                     current.clear();
                     state = 0;
@@ -152,3 +152,4 @@ fn main() {
     let tokenstream = &lex(preprocessedtext.to_string(), debug);
     println!("{:?}", tokenstream);
 }
+
