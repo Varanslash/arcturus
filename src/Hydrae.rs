@@ -141,7 +141,7 @@ fn main() {
         2 => { debug = false; },
         3 => { 
                 match args[2].as_str() {
-                    "-d" | "--debug" => { debug = true; },
+                    "-d" | "--debug" => { debug = true; println!("--- Debug Report ---") },
                     _ => { debug = false; },
                 } 
             },
