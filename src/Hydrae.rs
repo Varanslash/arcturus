@@ -12,6 +12,30 @@ enum Token {
     Bool(bool),
 }
 
+#[derive(Debug, Clone, PartialEq)]
+enum Node {
+    Program(Vec<Node>),
+    Label(String),
+    Exit,
+    Goto(String),
+    Jump(String),
+    Return(Option<Box<Node>>),
+    Call(String, Vec<Node>),
+    JumpIf(Box<Node>, String),
+    CallIf(Box<Node>, String, Vec<Node>),
+    Let(String, Box<Node>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum LexerState {
+    Idle,
+    Inactive,
+    Punct,
+    Word,
+    String,
+    Number,
+}
+
 fn preproc(input: &str, debug: bool) -> String {
     let mut output = String::from(input);
     output.push_str("\n{ label HYD_EXITBLOCK; exit; label HYD_EXITBLOCK_END; }");
@@ -45,92 +69,227 @@ fn preproc(input: &str, debug: bool) -> String {
 
 fn lex(source: String, debug: bool) -> Vec<Token> {
     let mut tokens = Vec::new();
+    let mut keywords = vec!["label", "exit", "goto", "jump", "return", "call", "jumpif", "callif", "let", "print", "input"];
     let mut current = String::new();
-    let mut inblock = false;
-    let mut incomment = false;
-    let mut state = 0;
+    let mut instring = false;
+    let mut charid: i128 = 0;
+    let mut state: LexerState = LexerState::Idle;
     let mut fsource = source.chars().collect::<Vec<char>>().into_iter().peekable();
     for ch in fsource.clone() {
         if debug {
-            println!("Current char: '{}', State: {}, InBlock: {}, InComment: {}", ch, state, inblock, incomment);
+            println!("{} - Char: '{}', State: '{:?}', Current: '{}'", charid, ch, state, current);
         }
-        if incomment == true || inblock == false {
-            if ch == '{' {
-                inblock = true;
-                tokens.push(Token::Punct("{".to_string()));
-            }
-
-            else if ch == '\\' && fsource.peek() == Some(&'x') {
-                incomment = true;
-            }
-
-            else if ch == 'x' && fsource.peek() == Some(&'\\') {
-                incomment = false;
+        if state == LexerState::Inactive {
+            if ch == '{' || ch == 'x' && fsource.peek() == Some(&'\\') {
+                if ch == '{' {
+                    tokens.push(Token::Punct(ch.to_string()));
+                }
+                state = LexerState::Idle;
             }
         }
-
         else {
-            match ch {
-                '}' => {
-                    inblock = false;
-                    tokens.push(Token::Punct("}".to_string()));
+            match state {
+                LexerState::Idle => {
+                    match ch {
+                        '}' => { tokens.push(Token::Punct(ch.to_string())); state = LexerState::Inactive; }
+                        '\\' => { 
+                            if fsource.peek() == Some(&'x') { 
+                                tokens.push(Token::Punct(ch.to_string())); 
+                                state = LexerState::Inactive; 
+                            } 
+                        }
+                        '+' | '-' | '*' | '/' | '%' | '=' | '!' | '<' | '>' | '&' | '|' | '^' => { 
+                            current.push(ch);
+                            state = LexerState::Punct; 
+                        }
+                        ';' | ',' | '(' | ')' | '{' | '[' | ']' | ':' => { 
+                            tokens.push(Token::Punct(ch.to_string())); 
+                        }
+                        '"' => { state = LexerState::String; }
+                        ch if ch.is_numeric() => { 
+                            current.push(ch); 
+                            state = LexerState::Number; 
+                        }
+                        ch if ch.is_alphanumeric() => { 
+                            current.push(ch); 
+                            state = LexerState::Word;
+                        }
+                        ch if ch.is_whitespace() => {}
+                        _ => { panic!("bro what the fuck is this shit => {}", ch) }
+                    }
                 }
-
-                // if encountering a letter or underscore and not currently building an identifier, start building one
-                'a'..='z' | 'A'..='Z' | '_' if state != 1 => {
-                    state = 1;
-                    current.push(ch);
+                LexerState::Punct => {
+                    if ch.is_whitespace() {
+                        tokens.push(Token::Punct(current.clone()));
+                        current.clear();
+                        state = LexerState::Idle;
+                    }
+                    else if ch == '"' {
+                        tokens.push(Token::Punct(current.clone()));
+                        current.clear();
+                        state = LexerState::String;
+                    }
+                    else if ch.is_numeric() {
+                        tokens.push(Token::Punct(current.clone()));
+                        current.clear();
+                        current.push(ch);
+                        state = LexerState::Number;
+                    }
+                    else if ch.is_alphanumeric() {
+                        tokens.push(Token::Punct(current.clone()));
+                        current.clear();
+                        current.push(ch);
+                        state = LexerState::Word;
+                    }
+                    else if ch == ';' || ch == ',' || ch == '(' || ch == ')' || ch == '{' || ch == '}' || ch == '[' || ch == ']' || ch == ':' || ch == '\\' {
+                        tokens.push(Token::Punct(current.clone()));
+                        current.clear();
+                        tokens.push(Token::Punct(ch.to_string()));
+                        if ch == '}' ||  ch == '\\' && fsource.peek() == Some(&'x') {
+                            state = LexerState::Inactive;
+                        }
+                    }
+                    else {
+                        current.push(ch);
+                    }
                 }
-
-                // if encountering a letter, digit, or underscore and currently building an identifier, continue building it
-                'a'..='z' | 'A'..='Z' | '_' | '0'..='9' if state == 1 => {
-                    current.push(ch);
-                }
-
-                // if encountering a non-alphanumeric character that isn't an underscore and currently building an identifier, finish it and check if it's a keyword
-                ch if !ch.is_alphanumeric() && ch != '_' && state == 1 => {
-                    if !current.is_empty() {
-                        if current == "label" || current == "exit" || current == "goto" 
-                        || current == "jump" || current == "return" || current == "call" 
-                        || current == "jumpif" || current == "callif" || current == "let" { 
+                LexerState::Word => {
+                    if ch.is_whitespace() {
+                        if keywords.contains(&current.as_str()) {
                             tokens.push(Token::Keyword(current.clone()));
-                            current.clear();
-                            state = 0;
+                        }
+                        else if current == "true" {
+                            tokens.push(Token::Bool(true));
+                        }
+                        else if current == "false" {
+                            tokens.push(Token::Bool(false));
                         }
                         else {
                             tokens.push(Token::Identifier(current.clone()));
-                            current.clear();
-                            state = 0;
                         }
-                        match ch {
-                            '(' | ')' | ';' | ':' => {
-                                state = 2;
-                                tokens.push(Token::Punct(ch.to_string()));
-                            }
-                            '+' | '-' | '*' | '/' | '%' | '&' | '|' | '^' | '!' | '=' | '>' | '<' if state != 2 => {
-                                state = 2;
-                                current.push(ch);
-                            }
-
-                            '+' | '-' | '*' | '/' | '%' | '&' | '|' | '^' | '!' | '=' | '>' | '<' if state == 2 => {
-                                current.push(ch);
-                            }
-                            _ => { state = 0; }
+                        current.clear();
+                        state = LexerState::Idle;
+                    }
+                    else if ch == '+' || ch == '-' || ch == '*' || ch == '/' || ch == '%' || ch == '=' || ch == '!' || ch == '<' || ch == '>' || ch == '&' || ch == '|' || ch == '^' {
+                        if keywords.contains(&current.as_str()) {
+                            tokens.push(Token::Keyword(current.clone()));
+                        }
+                        else if current == "true" {
+                            tokens.push(Token::Bool(true));
+                        }
+                        else if current == "false" {
+                            tokens.push(Token::Bool(false));
+                        }
+                        else {
+                            tokens.push(Token::Identifier(current.clone()));
+                        }
+                        current.clear();
+                        current.push(ch);
+                        state = LexerState::Punct;
+                    }
+                    else if ch == '"' {
+                        if keywords.contains(&current.as_str()) {
+                            tokens.push(Token::Keyword(current.clone()));
+                        }
+                        else if current == "true" {
+                            tokens.push(Token::Bool(true));
+                        }
+                        else if current == "false" {
+                            tokens.push(Token::Bool(false));
+                        }
+                        else {
+                            tokens.push(Token::Identifier(current.clone()));
+                        }
+                        current.clear();
+                        state = LexerState::String;
+                    }
+                    else if ch == ';' || ch == ',' || ch == '(' || ch == ')' || ch == '{' || ch == '}' || ch == '[' || ch == ']' || ch == ':' || ch == '\\' {
+                        if keywords.contains(&current.as_str()) {
+                            tokens.push(Token::Keyword(current.clone()));
+                        }
+                        else if current == "true" {
+                            tokens.push(Token::Bool(true));
+                        }
+                        else if current == "false" {
+                            tokens.push(Token::Bool(false));
+                        }
+                        else {
+                            tokens.push(Token::Identifier(current.clone()));
+                        }
+                        current.clear();
+                        tokens.push(Token::Punct(ch.to_string()));
+                        if ch == '}' ||  ch == '\\' && fsource.peek() == Some(&'x') {
+                            state = LexerState::Inactive;
                         }
                     }
+                    else {
+                        current.push(ch);
+                    }
                 }
-
-                ch if !"+-*/%&|^!=><".contains(ch) && state == 2 && !current.is_empty() => {
-                    tokens.push(Token::Punct(current.clone()));
-                    current.clear();
-                    state = 0;
+                LexerState::Inactive => {}
+                LexerState::String => {
+                    if ch == '"' {
+                        tokens.push(Token::String(current.clone()));
+                        current.clear();
+                        state = LexerState::Idle;
+                    }
+                    else {
+                        current.push(ch);
+                    }
                 }
-
-                _ => { state = 0; }
+                LexerState::Number => {
+                    if !ch.is_numeric() && ch != '.' {
+                        if current.contains('.') {
+                            tokens.push(Token::Float(current.parse::<f64>().unwrap()));
+                        }
+                        else {
+                            tokens.push(Token::Integer(current.parse::<i64>().unwrap()));
+                        }
+                        current.clear();
+                        if ch == '+' || ch == '-' || ch == '*' || ch == '/' || ch == '%' || ch == '=' || ch == '!' || ch == '<' || ch == '>' || ch == '&' || ch == '|' || ch == '^' {
+                            current.push(ch);
+                            state = LexerState::Punct;
+                        }
+                        else if ch.is_whitespace() {
+                            state = LexerState::Idle;
+                        }
+                        else if ch == ';' || ch == ',' || ch == '(' || ch == ')' || ch == '{' || ch == '}' || ch == '[' || ch == ']' || ch == ':' || ch == '\\' {
+                            tokens.push(Token::Punct(ch.to_string()));
+                            if ch == '}' ||  ch == '\\' && fsource.peek() == Some(&'x') {
+                                state = LexerState::Inactive;
+                            }
+                            else {
+                                state = LexerState::Idle;
+                            }
+                        }
+                        else if ch == '"' {
+                            state = LexerState::String;
+                        }
+                        else {
+                            current.push(ch);
+                            state = LexerState::Word;
+                        }
+                    }
+                    else {
+                        current.push(ch);
+                    }
+                }
             }
         }
+        charid += 1;
     }
+    tokens.retain(|t| match t {
+        Token::Identifier(s) => !s.is_empty(),
+        _ => true
+    });
     return tokens;
+}
+
+fn parse(tokens: Vec<Token>, debug: bool) {
+
+    if debug {
+        println!("Parsing tokens: {:?}", tokens);
+    }
 }
 
 fn main() {
@@ -141,7 +300,7 @@ fn main() {
         2 => { debug = false; },
         3 => { 
                 match args[2].as_str() {
-                    "-d" | "--debug" => { debug = true; println!("--- Debug Report ---") },
+                    "-d" | "--debug" => { debug = true; },
                     _ => { debug = false; },
                 } 
             },
@@ -152,4 +311,3 @@ fn main() {
     let tokenstream = &lex(preprocessedtext.to_string(), debug);
     println!("{:?}", tokenstream);
 }
-
