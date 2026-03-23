@@ -79,203 +79,200 @@ fn lex(source: String, debug: bool) -> Vec<Token> {
         if debug {
             println!("{} - Char: '{}', State: '{:?}', Current: '{}'", charid, ch, state, current);
         }
-        if state == LexerState::Inactive {
-            if ch == '{' || ch == 'x' && fsource.peek() == Some(&'\\') {
-                if ch == '{' {
-                    tokens.push(Token::Punct(ch.to_string()));
-                }
-                state = LexerState::Idle;
-            }
-        }
-        else {
-            match state {
-                LexerState::Idle => {
-                    match ch {
-                        '}' => { tokens.push(Token::Punct(ch.to_string())); state = LexerState::Inactive; }
-                        '\\' => { 
-                            if fsource.peek() == Some(&'x') { 
-                                tokens.push(Token::Punct(ch.to_string())); 
-                                state = LexerState::Inactive; 
-                            } 
-                        }
-                        '+' | '-' | '*' | '/' | '%' | '=' | '!' | '<' | '>' | '&' | '|' | '^' => { 
-                            current.push(ch);
-                            state = LexerState::Punct; 
-                        }
-                        ';' | ',' | '(' | ')' | '{' | '[' | ']' | ':' => { 
-                            tokens.push(Token::Punct(ch.to_string())); 
-                        }
-                        '"' => { state = LexerState::String; }
-                        ch if ch.is_numeric() => { 
-                            current.push(ch); 
-                            state = LexerState::Number; 
-                        }
-                        ch if ch.is_alphanumeric() => { 
-                            current.push(ch); 
-                            state = LexerState::Word;
-                        }
-                        ch if ch.is_whitespace() => {}
-                        _ => { panic!("bro what the fuck is this shit => {}", ch) }
+        
+        match state {
+            LexerState::Idle => {
+                match ch {
+                    '}' => { tokens.push(Token::Punct(ch.to_string())); state = LexerState::Inactive; }
+                    '#' => { 
+                        state = LexerState::Inactive; 
                     }
-                }
-                LexerState::Punct => {
-                    if ch.is_whitespace() {
-                        tokens.push(Token::Punct(current.clone()));
-                        current.clear();
-                        state = LexerState::Idle;
-                    }
-                    else if ch == '"' {
-                        tokens.push(Token::Punct(current.clone()));
-                        current.clear();
-                        state = LexerState::String;
-                    }
-                    else if ch.is_numeric() {
-                        tokens.push(Token::Punct(current.clone()));
-                        current.clear();
+                    '+' | '-' | '*' | '/' | '%' | '=' | '!' | '<' | '>' | '&' | '|' | '^' => { 
                         current.push(ch);
-                        state = LexerState::Number;
+                        state = LexerState::Punct; 
                     }
-                    else if ch.is_alphanumeric() {
-                        tokens.push(Token::Punct(current.clone()));
-                        current.clear();
-                        current.push(ch);
+                    ';' | ',' | '(' | ')' | '{' | '[' | ']' | ':' => { 
+                        tokens.push(Token::Punct(ch.to_string())); 
+                    }
+                    '"' => { state = LexerState::String; }
+                    ch if ch.is_numeric() => { 
+                        current.push(ch); 
+                        state = LexerState::Number; 
+                    }
+                    ch if ch.is_alphanumeric() => { 
+                        current.push(ch); 
                         state = LexerState::Word;
                     }
-                    else if ch == ';' || ch == ',' || ch == '(' || ch == ')' || ch == '{' || ch == '}' || ch == '[' || ch == ']' || ch == ':' || ch == '\\' {
-                        tokens.push(Token::Punct(current.clone()));
-                        current.clear();
-                        tokens.push(Token::Punct(ch.to_string()));
-                        if ch == '}' ||  ch == '\\' && fsource.peek() == Some(&'x') {
-                            state = LexerState::Inactive;
-                        }
-                    }
-                    else {
-                        current.push(ch);
+                    ch if ch.is_whitespace() => {}
+                    _ => { panic!("bro what the fuck is this shit => {}", ch) }
+                }
+            }
+            LexerState::Punct => {
+                if ch.is_whitespace() {
+                    tokens.push(Token::Punct(current.clone()));
+                    current.clear();
+                    state = LexerState::Idle;
+                }
+                else if ch == '"' {
+                    tokens.push(Token::Punct(current.clone()));
+                    current.clear();
+                    state = LexerState::String;
+                }
+                else if ch.is_numeric() {
+                    tokens.push(Token::Punct(current.clone()));
+                    current.clear();
+                    current.push(ch);
+                    state = LexerState::Number;
+                }
+                else if ch.is_alphanumeric() {
+                    tokens.push(Token::Punct(current.clone()));
+                    current.clear();
+                    current.push(ch);
+                    state = LexerState::Word;
+                }
+                else if ch == ';' || ch == ',' || ch == '(' || ch == ')' || ch == '{' || ch == '}' || ch == '[' || ch == ']' || ch == ':' || ch == '\\' {
+                    tokens.push(Token::Punct(current.clone()));
+                    current.clear();
+                    tokens.push(Token::Punct(ch.to_string()));
+                    if ch == '}' ||  ch == '#' {
+                        state = LexerState::Inactive;
                     }
                 }
-                LexerState::Word => {
-                    if ch.is_whitespace() {
-                        if keywords.contains(&current.as_str()) {
-                            tokens.push(Token::Keyword(current.clone()));
-                        }
-                        else if current == "true" {
-                            tokens.push(Token::Bool(true));
-                        }
-                        else if current == "false" {
-                            tokens.push(Token::Bool(false));
-                        }
-                        else {
-                            tokens.push(Token::Identifier(current.clone()));
-                        }
-                        current.clear();
-                        state = LexerState::Idle;
+                else {
+                    current.push(ch);
+                }
+            }
+            LexerState::Word => {
+                if ch.is_whitespace() {
+                    if keywords.contains(&current.as_str()) {
+                        tokens.push(Token::Keyword(current.clone()));
                     }
-                    else if ch == '+' || ch == '-' || ch == '*' || ch == '/' || ch == '%' || ch == '=' || ch == '!' || ch == '<' || ch == '>' || ch == '&' || ch == '|' || ch == '^' {
-                        if keywords.contains(&current.as_str()) {
-                            tokens.push(Token::Keyword(current.clone()));
-                        }
-                        else if current == "true" {
-                            tokens.push(Token::Bool(true));
-                        }
-                        else if current == "false" {
-                            tokens.push(Token::Bool(false));
-                        }
-                        else {
-                            tokens.push(Token::Identifier(current.clone()));
-                        }
-                        current.clear();
+                    else if current == "true" {
+                        tokens.push(Token::Bool(true));
+                    }
+                    else if current == "false" {
+                        tokens.push(Token::Bool(false));
+                    }
+                    else {
+                        tokens.push(Token::Identifier(current.clone()));
+                    }
+                    current.clear();
+                    state = LexerState::Idle;
+                }
+                else if ch == '+' || ch == '-' || ch == '*' || ch == '/' || ch == '%' || ch == '=' || ch == '!' || ch == '<' || ch == '>' || ch == '&' || ch == '|' || ch == '^' {
+                    if keywords.contains(&current.as_str()) {
+                        tokens.push(Token::Keyword(current.clone()));
+                    }
+                    else if current == "true" {
+                        tokens.push(Token::Bool(true));
+                    }
+                    else if current == "false" {
+                        tokens.push(Token::Bool(false));
+                    }
+                    else {
+                        tokens.push(Token::Identifier(current.clone()));
+                    }
+                    current.clear();
+                    current.push(ch);
+                    state = LexerState::Punct;
+                }
+                else if ch == '"' {
+                    if keywords.contains(&current.as_str()) {
+                        tokens.push(Token::Keyword(current.clone()));
+                    }
+                    else if current == "true" {
+                        tokens.push(Token::Bool(true));
+                    }
+                    else if current == "false" {
+                        tokens.push(Token::Bool(false));
+                    }
+                    else {
+                        tokens.push(Token::Identifier(current.clone()));
+                    }
+                    current.clear();
+                    state = LexerState::String;
+                }
+                else if ch == ';' || ch == ',' || ch == '(' || ch == ')' || ch == '{' || ch == '}' || ch == '[' || ch == ']' || ch == ':' || ch == '\\' {
+                    if keywords.contains(&current.as_str()) {
+                        tokens.push(Token::Keyword(current.clone()));
+                    }
+                    else if current == "true" {
+                        tokens.push(Token::Bool(true));
+                    }
+                    else if current == "false" {
+                        tokens.push(Token::Bool(false));
+                    }
+                    else {
+                        tokens.push(Token::Identifier(current.clone()));
+                    }
+                    current.clear();
+                    tokens.push(Token::Punct(ch.to_string()));
+                    if ch == '}' ||  ch == '#' {
+                        state = LexerState::Inactive;
+                    }
+                }
+                else {
+                    current.push(ch);
+                }
+            }
+            LexerState::Inactive => {  
+                if ch == '{' {
+                    tokens.push(Token::Punct(ch.to_string()));
+                    state = LexerState::Idle;
+                }
+                else if ch == '#' {
+                    state = LexerState::Idle;
+                }
+            }
+            LexerState::String => {
+                if ch == '"' {
+                    tokens.push(Token::String(current.clone()));
+                    current.clear();
+                    state = LexerState::Idle;
+                }
+                else {
+                    current.push(ch);
+                }
+            }
+            LexerState::Number => {
+                if !ch.is_numeric() && ch != '.' {
+                    if current.contains('.') {
+                        tokens.push(Token::Float(current.parse::<f64>().unwrap()));
+                    }
+                    else {
+                        tokens.push(Token::Integer(current.parse::<i64>().unwrap()));
+                    }
+                    current.clear();
+                    if ch == '+' || ch == '-' || ch == '*' || ch == '/' || ch == '%' || ch == '=' || ch == '!' || ch == '<' || ch == '>' || ch == '&' || ch == '|' || ch == '^' {
                         current.push(ch);
                         state = LexerState::Punct;
                     }
-                    else if ch == '"' {
-                        if keywords.contains(&current.as_str()) {
-                            tokens.push(Token::Keyword(current.clone()));
-                        }
-                        else if current == "true" {
-                            tokens.push(Token::Bool(true));
-                        }
-                        else if current == "false" {
-                            tokens.push(Token::Bool(false));
-                        }
-                        else {
-                            tokens.push(Token::Identifier(current.clone()));
-                        }
-                        current.clear();
-                        state = LexerState::String;
-                    }
-                    else if ch == ';' || ch == ',' || ch == '(' || ch == ')' || ch == '{' || ch == '}' || ch == '[' || ch == ']' || ch == ':' || ch == '\\' {
-                        if keywords.contains(&current.as_str()) {
-                            tokens.push(Token::Keyword(current.clone()));
-                        }
-                        else if current == "true" {
-                            tokens.push(Token::Bool(true));
-                        }
-                        else if current == "false" {
-                            tokens.push(Token::Bool(false));
-                        }
-                        else {
-                            tokens.push(Token::Identifier(current.clone()));
-                        }
-                        current.clear();
-                        tokens.push(Token::Punct(ch.to_string()));
-                        if ch == '}' ||  ch == '\\' && fsource.peek() == Some(&'x') {
-                            state = LexerState::Inactive;
-                        }
-                    }
-                    else {
-                        current.push(ch);
-                    }
-                }
-                LexerState::Inactive => {}
-                LexerState::String => {
-                    if ch == '"' {
-                        tokens.push(Token::String(current.clone()));
-                        current.clear();
+                    else if ch.is_whitespace() {
                         state = LexerState::Idle;
                     }
-                    else {
-                        current.push(ch);
-                    }
-                }
-                LexerState::Number => {
-                    if !ch.is_numeric() && ch != '.' {
-                        if current.contains('.') {
-                            tokens.push(Token::Float(current.parse::<f64>().unwrap()));
+                    else if ch == ';' || ch == ',' || ch == '(' || ch == ')' || ch == '{' || ch == '}' || ch == '[' || ch == ']' || ch == ':' || ch == '\\' {
+                        tokens.push(Token::Punct(ch.to_string()));
+                        if ch == '}' ||  ch == '#' {
+                            state = LexerState::Inactive;
                         }
                         else {
-                            tokens.push(Token::Integer(current.parse::<i64>().unwrap()));
-                        }
-                        current.clear();
-                        if ch == '+' || ch == '-' || ch == '*' || ch == '/' || ch == '%' || ch == '=' || ch == '!' || ch == '<' || ch == '>' || ch == '&' || ch == '|' || ch == '^' {
-                            current.push(ch);
-                            state = LexerState::Punct;
-                        }
-                        else if ch.is_whitespace() {
                             state = LexerState::Idle;
                         }
-                        else if ch == ';' || ch == ',' || ch == '(' || ch == ')' || ch == '{' || ch == '}' || ch == '[' || ch == ']' || ch == ':' || ch == '\\' {
-                            tokens.push(Token::Punct(ch.to_string()));
-                            if ch == '}' ||  ch == '\\' && fsource.peek() == Some(&'x') {
-                                state = LexerState::Inactive;
-                            }
-                            else {
-                                state = LexerState::Idle;
-                            }
-                        }
-                        else if ch == '"' {
-                            state = LexerState::String;
-                        }
-                        else {
-                            current.push(ch);
-                            state = LexerState::Word;
-                        }
+                    }
+                    else if ch == '"' {
+                        state = LexerState::String;
                     }
                     else {
                         current.push(ch);
+                        state = LexerState::Word;
                     }
+                }
+                else {
+                    current.push(ch);
                 }
             }
         }
+        
         charid += 1;
     }
     tokens.retain(|t| match t {
@@ -295,19 +292,27 @@ fn parse(tokens: Vec<Token>, debug: bool) {
 fn main() {
     let args: Vec<String> = env::args().collect();
     let filepath = args[1].clone();
-    let debug: bool;
+    let outputpath = args[1].clone() + ".avm";
+    let mut stopatlex = false;
+    let mut debug: bool = false;
     match args.len() {
         2 => { debug = false; },
-        3 => { 
-                match args[2].as_str() {
+        1 => { panic!("Usage: hydrae <input file> [flags]"); debug = false; },
+        _ => { 
+            for arg in &args[2..] {
+                match arg.as_str() {
                     "-d" | "--debug" => { debug = true; },
+                    "-l" | "--lex" => { stopatlex = true; debug = false; },
                     _ => { debug = false; },
                 } 
-            },
-        _ => { panic!("Usage: hydrae <input file> [flags]"); }
+            }
+        },
     }
     let input = fs::read_to_string(filepath).expect("KernelError: Failed to read input file");
     let preprocessedtext = &preproc(&input, debug);
     let tokenstream = &lex(preprocessedtext.to_string(), debug);
-    println!("{:?}", tokenstream);
+    if stopatlex {
+        fs::write(outputpath, format!("{:?}", tokenstream)).expect("KernelError: Failed to write tokens to file");
+        return;
+    }
 }
