@@ -14,16 +14,26 @@ enum Token {
 
 #[derive(Debug, Clone, PartialEq)]
 enum Node {
-    Program(Vec<Node>),
+    Start,
+    End,
+    Delim,
     Label(String),
     Exit,
-    Goto(String),
     Jump(String),
-    Return(Option<Box<Node>>),
-    Call(String, Vec<Node>),
+    Return,
+    Call(String),
     JumpIf(Box<Node>, String),
-    CallIf(Box<Node>, String, Vec<Node>),
+    CallIf(Box<Node>, String),
     Let(String, Box<Node>),
+    Add(u8),
+    Sub(u8),
+    Mul(u8),
+    Div(u8),
+    Mod(u8),
+    Compare(u8),
+    Print(Box<Node>),
+    Input(String),
+    Push
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -69,12 +79,11 @@ fn preproc(input: &str, debug: bool) -> String {
 
 fn lex(source: String, debug: bool) -> Vec<Token> {
     let mut tokens = Vec::new();
-    let mut keywords = vec!["label", "exit", "goto", "jump", "return", "call", "jumpif", "callif", "let", "print", "input"];
+    let keywords = vec!["label", "exit", "jump", "return", "call", "jumpif", "callif", "let", "print", "input"];
     let mut current = String::new();
-    let mut instring = false;
     let mut charid: i128 = 0;
     let mut state: LexerState = LexerState::Idle;
-    let mut fsource = source.chars().collect::<Vec<char>>().into_iter().peekable();
+    let fsource = source.chars().collect::<Vec<char>>().into_iter().peekable();
     for ch in fsource.clone() {
         if debug {
             println!("{} - Char: '{}', State: '{:?}', Current: '{}'", charid, ch, state, current);
@@ -279,14 +288,55 @@ fn lex(source: String, debug: bool) -> Vec<Token> {
         Token::Identifier(s) => !s.is_empty(),
         _ => true
     });
+    tokens.push(Token::Identifier("EOF".to_string()));
     return tokens;
 }
 
-fn parse(tokens: Vec<Token>, debug: bool) {
+fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
+    let mut ast = Vec::new();
+    let split_tokens = tokens.split(|t| t == &Token::Punct(";".to_string())).map(|s| s.to_vec()).collect::<Vec<Vec<Token>>>();
+    let mut pointer = 0;
+    let mut statementid = 0;
 
-    if debug {
-        println!("Parsing tokens: {:?}", tokens);
+    while statementid < split_tokens.len() {
+        let statement = &split_tokens[statementid];
+        while pointer < statement.len() {
+            if debug {
+                println!("Parsing token: {:?}", statement[pointer]);
+            }
+            match &statement[pointer] {
+                Token::Keyword(k) => {
+
+                }
+                Token::Punct(p) => {
+                    match p.as_str() {
+                        "{" => {
+                            ast.push(Node::Start); 
+                            pointer += 1;
+                        }
+
+                        "}" => { 
+                            if statement[pointer+1] == Token::Punct("{".to_string()) {
+                                ast.push(Node::Delim); 
+                                pointer += 2;
+                            }
+
+                            else {
+                                ast.push(Node::End); 
+                                pointer += 1;
+                            }
+                        }
+
+                        &_ => {
+                            panic!("LexerError: Impossible Token {:?} in line {} (Note: counted by semicolons, a standalone {{ or }} is not a line)", statement[pointer], statementid);
+                        }
+                    }
+                }
+                _ => { panic!("SyntaxError: Unexpected token {:?} in line {} (Note: counted by semicolons, a standalone {{ or }} is not a line)", statement[pointer], statementid); }
+            }
+        }
     }
+    return ast;
 }
 
 fn main() {
@@ -297,7 +347,7 @@ fn main() {
     let mut debug: bool = false;
     match args.len() {
         2 => { debug = false; },
-        1 => { panic!("Usage: hydrae <input file> [flags]"); debug = false; },
+        1 => { panic!("Usage: hydrae <input file> [flags]");},
         _ => { 
             for arg in &args[2..] {
                 match arg.as_str() {
@@ -315,4 +365,6 @@ fn main() {
         fs::write(outputpath, format!("{:?}", tokenstream)).expect("KernelError: Failed to write tokens to file");
         return;
     }
+    let parsed = parse(tokenstream.to_vec(), debug);
+    println!("Parsed AST: {:?}", parsed);
 }
