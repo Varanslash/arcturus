@@ -24,7 +24,7 @@ enum Node {
     Call(String),
     JumpIf(Box<Node>, String),
     CallIf(Box<Node>, String),
-    Let(String, Box<Node>),
+    Let(String),
     Add(u8),
     Sub(u8),
     Mul(u8),
@@ -33,7 +33,11 @@ enum Node {
     Compare(u8),
     Print(Box<Node>),
     Input(String),
-    Push
+    PushInt(i64),
+    PushFloat(f64),
+    PushString(String),
+    PushBool(bool),
+    Load(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -294,46 +298,162 @@ fn lex(source: String, debug: bool) -> Vec<Token> {
 
 fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
     let mut ast = Vec::new();
-    let split_tokens = tokens.split(|t| t == &Token::Punct(";".to_string())).map(|s| s.to_vec()).collect::<Vec<Vec<Token>>>();
     let mut pointer = 0;
-    let mut statementid = 0;
 
-    while statementid < split_tokens.len() {
-        let statement = &split_tokens[statementid];
-        while pointer < statement.len() {
-            if debug {
-                println!("Parsing token: {:?}", statement[pointer]);
-            }
-            match &statement[pointer] {
-                Token::Keyword(k) => {
-
-                }
-                Token::Punct(p) => {
-                    match p.as_str() {
-                        "{" => {
-                            ast.push(Node::Start); 
-                            pointer += 1;
+    while pointer < tokens.len() {
+        if debug {
+            println!("Parsing token: {:?}", tokens[pointer]);
+        }
+        match &tokens[pointer] {
+            Token::Keyword(k) => {
+                match k.as_str() {
+                    "label" => {
+                        if let Token::Identifier(name) = &tokens[pointer+1] {
+                            ast.push(Node::Label(name.clone()));
+                            pointer += 2;
                         }
-
-                        "}" => { 
-                            if statement[pointer+1] == Token::Punct("{".to_string()) {
-                                ast.push(Node::Delim); 
-                                pointer += 2;
-                            }
-
-                            else {
-                                ast.push(Node::End); 
-                                pointer += 1;
-                            }
-                        }
-
-                        &_ => {
-                            panic!("LexerError: Impossible Token {:?} in line {} (Note: counted by semicolons, a standalone {{ or }} is not a line)", statement[pointer], statementid);
+                        else {
+                            panic!("SyntaxError: Expected identifier after 'label'");
                         }
                     }
+                    "return" => {
+                        ast.push(Node::Return);
+                        pointer += 1;
+                    }
+                    "exit" => {
+                        ast.push(Node::Exit);
+                        pointer += 1;
+                    }
+                    "jump" => {
+                        if let Token::Identifier(label) = &tokens[pointer+1] {
+                            ast.push(Node::Jump(label.clone()));
+                            pointer += 2;
+                        }
+                        else {
+                            panic!("SyntaxError: Expected identifier after 'jump'");
+                        }
+                    }
+                    "call" => {
+                        if let Token::Identifier(label) = &tokens[pointer+1] {
+                            ast.push(Node::Call(label.clone()));
+                            pointer += 2;
+                        }
+                        else {
+                            panic!("SyntaxError: Expected identifier after 'call'");
+                        }
+                    }
+                    "input" => {
+                        if let Token::Identifier(var) = &tokens[pointer+1] {
+                            ast.push(Node::Input(var.clone()));
+                            pointer += 2;
+                        }
+                        else {
+                            panic!("SyntaxError: Expected identifier after 'input'");
+                        }
+                    }
+                    "let" => {
+                        let mut counter = 1;
+                        loop {
+                            match &tokens[pointer+2+counter] {
+                                Token::Punct(p) if p == ";" => { break; }
+                                Token::Punct(p) if p == "+" => { 
+                                    match &tokens[pointer+2+counter+1] {
+                                        Token::Identifier(s) => { ast.push(Node::Load(s.clone())); }
+                                        Token::Integer(i) => { ast.push(Node::PushInt(*i)); }
+                                        Token::Float(f) => { ast.push(Node::PushFloat(*f)); }
+                                        _ => { panic!("SyntaxError: Unexpected token in let expression: {:?}", tokens[pointer+2+counter+1]); }
+                                    } 
+                                    ast.push(Node::Add(2));
+                                    counter += 2;
+                                }
+                                Token::Punct(p) if p == "-" => { 
+                                    match &tokens[pointer+2+counter+1] {
+                                        Token::Identifier(s) => { ast.push(Node::Load(s.clone())); }
+                                        Token::Integer(i) => { ast.push(Node::PushInt(*i)); }
+                                        Token::Float(f) => { ast.push(Node::PushFloat(*f)); }
+                                        _ => { panic!("SyntaxError: Unexpected token in let expression: {:?}", tokens[pointer+2+counter+1]); }
+                                    } 
+                                    ast.push(Node::Sub(2));
+                                    counter += 2;
+                                }
+                                Token::Punct(p) if p == "*" => { 
+                                    match &tokens[pointer+2+counter+1] {
+                                        Token::Identifier(s) => { ast.push(Node::Load(s.clone())); }
+                                        Token::Integer(i) => { ast.push(Node::PushInt(*i)); }
+                                        Token::Float(f) => { ast.push(Node::PushFloat(*f)); }
+                                        _ => { panic!("SyntaxError: Unexpected token in let expression: {:?}", tokens[pointer+2+counter+1]); }
+                                    } 
+                                    ast.push(Node::Mul(2));
+                                    counter += 2;
+                                }
+                                Token::Punct(p) if p == "/" => { 
+                                    match &tokens[pointer+2+counter+1] {
+                                        Token::Identifier(s) => { ast.push(Node::Load(s.clone())); }
+                                        Token::Integer(i) => { ast.push(Node::PushInt(*i)); }
+                                        Token::Float(f) => { ast.push(Node::PushFloat(*f)); }
+                                        _ => { panic!("SyntaxError: Unexpected token in let expression: {:?}", tokens[pointer+2+counter+1]); }
+                                    } 
+                                    ast.push(Node::Div(2));
+                                    counter += 2;
+                                }
+                                Token::Punct(p) if p == "%" => { 
+                                    match &tokens[pointer+2+counter+1] {
+                                        Token::Identifier(s) => { ast.push(Node::Load(s.clone())); }
+                                        Token::Integer(i) => { ast.push(Node::PushInt(*i)); }
+                                        Token::Float(f) => { ast.push(Node::PushFloat(*f)); }
+                                        _ => { panic!("SyntaxError: Unexpected token in let expression: {:?}", tokens[pointer+2+counter+1]); }
+                                    } 
+                                    ast.push(Node::Mod(2));
+                                    counter += 2;
+                                }
+                                Token::Identifier(s) => { ast.push(Node::Load(s.clone())); counter += 1; }
+                                Token::Integer(i) => { ast.push(Node::PushInt(*i)); counter += 1; }
+                                Token::Float(f) => { ast.push(Node::PushFloat(*f)); counter += 1; }
+                                Token::String(s) => { ast.push(Node::PushString(s.clone())); counter += 1; }
+                                Token::Bool(b) => { ast.push(Node::PushBool(*b)); counter += 1; }
+                                _ => { panic!("SyntaxError: Unexpected token in let expression: {:?}", tokens[pointer+2+counter]); }
+                            }
+                        }
+                        ast.push(
+                            Node::Let(
+                                match &tokens[pointer+1] {
+                                    Token::Identifier(s) => s.clone(),
+                                    _ => { panic!("SyntaxError: Expected identifier after 'let'"); }
+                                }
+                            )
+                        );
+                        pointer += 2 + counter + 1;
+                    }
+                    &_ => {
+                        panic!("SyntaxError: Impossible keyword {:?}", tokens[pointer]);
+                    }
                 }
-                _ => { panic!("SyntaxError: Unexpected token {:?} in line {} (Note: counted by semicolons, a standalone {{ or }} is not a line)", statement[pointer], statementid); }
             }
+            Token::Punct(p) => {
+                match p.as_str() {
+                    "{" => {
+                        ast.push(Node::Start); 
+                        pointer += 1;
+                    }
+
+                    "}" => { 
+                        if tokens[pointer+1] == Token::Punct("{".to_string()) {
+                            ast.push(Node::Delim); 
+                            pointer += 2;
+                        }
+
+                        else {
+                            ast.push(Node::End); 
+                            pointer += 1;
+                        }
+                    }
+
+                    &_ => {
+                        panic!("LexerError: Impossible Token {:?}", tokens[pointer]);
+                    }
+                }
+            }
+            _ => { panic!("SyntaxError: Unexpected token {:?}", tokens[pointer]); }
         }
     }
     return ast;
