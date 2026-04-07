@@ -22,8 +22,8 @@ enum Node {
     Jump(String),
     Return,
     Call(String),
-    JumpIf(Box<Node>, String),
-    CallIf(Box<Node>, String),
+    JumpIf(String),
+    CallIf(String),
     Let(String),
     Add(u8),
     Sub(u8),
@@ -38,6 +38,7 @@ enum Node {
     PushString(String),
     PushBool(bool),
     Load(String),
+    Logic(String)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -52,7 +53,7 @@ enum LexerState {
 
 fn preproc(input: &str, debug: bool) -> String {
     let mut output = String::from(input);
-    output.push_str("\n{ label HYD_EXITBLOCK; exit; label HYD_EXITBLOCK_END; }");
+    output.push_str("{ label HYD_EXITBLOCK; exit; label HYD_EXITBLOCK_END; }");
 
     for line in input.lines() {
         if debug {
@@ -351,6 +352,17 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
                             panic!("SyntaxError: Expected identifier after 'input'");
                         }
                     }
+                    "print" => {
+                        ast.push(Node::Print(Box::new(match &tokens[pointer+1] {
+                            Token::Identifier(s) => Node::Load(s.clone()),
+                            Token::Integer(i) => Node::PushInt(*i),
+                            Token::Float(f) => Node::PushFloat(*f),
+                            Token::String(s) => Node::PushString(s.clone()),
+                            Token::Bool(b) => Node::PushBool(*b),
+                            _ => { panic!("SyntaxError: Unexpected token after 'print': {:?}", tokens[pointer+1]); }
+                        })));
+                        pointer += 2;
+                    }
                     "let" => {
                         let mut counter = 1;
                         loop {
@@ -422,10 +434,132 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
                                 }
                             )
                         );
-                        pointer += 2 + counter + 1;
+                        pointer += 2 + counter;
+                    }
+                    "jumpif" | "callif" => {
+                        let mut counter = 1;
+                        loop {
+                            match &tokens[pointer+1+counter] {
+                                Token::Punct(p) => { 
+                                    match p.as_str() {
+                                        ";" => { break; }
+                                        ">" => { 
+                                            match &tokens[pointer+2+counter] {
+                                                Token::Identifier(s) => { ast.push(Node::Load(s.clone())); }
+                                                Token::Integer(i) => { ast.push(Node::PushInt(*i)); }
+                                                Token::Float(f) => { ast.push(Node::PushFloat(*f)); }
+                                                Token::String(s) => { ast.push(Node::PushString(s.clone())); }
+                                                Token::Bool(b) => { ast.push(Node::PushBool(*b)); }
+                                                _ => { panic!("SyntaxError: Unexpected token in *if expression: {:?}", tokens[pointer+2+counter+1]); }
+                                            } 
+                                            ast.push(Node::Compare(0xC5)); 
+                                            counter += 2; 
+                                        }
+                                        "<" => { 
+                                            match &tokens[pointer+2+counter] {
+                                                Token::Identifier(s) => { ast.push(Node::Load(s.clone())); }
+                                                Token::Integer(i) => { ast.push(Node::PushInt(*i)); }
+                                                Token::Float(f) => { ast.push(Node::PushFloat(*f)); }
+                                                Token::String(s) => { ast.push(Node::PushString(s.clone())); }
+                                                Token::Bool(b) => { ast.push(Node::PushBool(*b)); }
+                                                _ => { panic!("SyntaxError: Unexpected token in *if expression: {:?}", tokens[pointer+2+counter+1]); }
+                                            } 
+                                            ast.push(Node::Compare(0xC7)); 
+                                            counter += 2; 
+                                        }
+                                        ">=" => { 
+                                            match &tokens[pointer+2+counter] {
+                                                Token::Identifier(s) => { ast.push(Node::Load(s.clone())); }
+                                                Token::Integer(i) => { ast.push(Node::PushInt(*i)); }
+                                                Token::Float(f) => { ast.push(Node::PushFloat(*f)); }
+                                                Token::String(s) => { ast.push(Node::PushString(s.clone())); }
+                                                Token::Bool(b) => { ast.push(Node::PushBool(*b)); }
+                                                _ => { panic!("SyntaxError: Unexpected token in *if expression: {:?}", tokens[pointer+2+counter+1]); }
+                                            } 
+                                            ast.push(Node::Compare(0xC4)); 
+                                            counter += 2; 
+                                        }
+                                        "<=" => { 
+                                            match &tokens[pointer+2+counter] {
+                                                Token::Identifier(s) => { ast.push(Node::Load(s.clone())); }
+                                                Token::Integer(i) => { ast.push(Node::PushInt(*i)); }
+                                                Token::Float(f) => { ast.push(Node::PushFloat(*f)); }
+                                                Token::String(s) => { ast.push(Node::PushString(s.clone())); }
+                                                Token::Bool(b) => { ast.push(Node::PushBool(*b)); }
+                                                _ => { panic!("SyntaxError: Unexpected token in *if expression: {:?}", tokens[pointer+2+counter+1]); }
+                                            } 
+                                            ast.push(Node::Compare(0xC6)); 
+                                            counter += 2; 
+                                        }
+                                        "==" => { 
+                                            match &tokens[pointer+2+counter] {
+                                                Token::Identifier(s) => { ast.push(Node::Load(s.clone())); }
+                                                Token::Integer(i) => { ast.push(Node::PushInt(*i)); }
+                                                Token::Float(f) => { ast.push(Node::PushFloat(*f)); }
+                                                Token::String(s) => { ast.push(Node::PushString(s.clone())); }
+                                                Token::Bool(b) => { ast.push(Node::PushBool(*b)); }
+                                                _ => { panic!("SyntaxError: Unexpected token in *if expression: {:?}", tokens[pointer+2+counter+1]); }
+                                            } 
+                                            ast.push(Node::Compare(0xC3)); 
+                                            counter += 2; 
+                                        }
+                                        "!=" => { 
+                                            match &tokens[pointer+2+counter] {
+                                                Token::Identifier(s) => { ast.push(Node::Load(s.clone())); }
+                                                Token::Integer(i) => { ast.push(Node::PushInt(*i)); }
+                                                Token::Float(f) => { ast.push(Node::PushFloat(*f)); }
+                                                Token::String(s) => { ast.push(Node::PushString(s.clone())); }
+                                                Token::Bool(b) => { ast.push(Node::PushBool(*b)); }
+                                                _ => { panic!("SyntaxError: Unexpected token in *if expression: {:?}", tokens[pointer+2+counter+1]); }
+                                            } 
+                                            ast.push(Node::Compare(0xC8)); 
+                                            counter += 2; 
+                                        }
+                                        "&&" => {
+                                            ast.push(Node::Logic("and".to_string()));
+                                            counter += 1;
+                                        }
+                                        "||" => {
+                                            ast.push(Node::Logic("or".to_string()));
+                                            counter += 1;
+                                        }
+                                        "^^" => {
+                                            ast.push(Node::Logic("xor".to_string()));
+                                            counter += 1;
+                                        }
+                                        &_ => { panic!("SyntaxError: Unexpected token in *if expression: {:?}", tokens[pointer+1+counter]); }
+                                    }
+                                }
+                                Token::Identifier(s) => { ast.push(Node::Load(s.clone())); counter += 1; }
+                                Token::Integer(i) => { ast.push(Node::PushInt(*i)); counter += 1; }
+                                Token::Float(f) => { ast.push(Node::PushFloat(*f)); counter += 1; }
+                                Token::String(s) => { ast.push(Node::PushString(s.clone())); counter += 1; }
+                                Token::Bool(b) => { ast.push(Node::PushBool(*b)); counter += 1; }
+                                _ => { panic!("SyntaxError: Unexpected token in {} expression: {:?}", k, tokens[pointer+1+counter]); }
+                            }
+                        }
+                        ast.push(
+                            if k == "jumpif" {
+                                Node::JumpIf(
+                                    match &tokens[pointer+1] {
+                                        Token::Identifier(s) => s.clone(),
+                                        _ => { panic!("SyntaxError: Expected identifier after 'jumpif' condition"); }
+                                    }
+                                )
+                            }
+                            else {
+                                Node::CallIf(
+                                    match &tokens[pointer+1] {
+                                        Token::Identifier(s) => s.clone(),
+                                        _ => { panic!("SyntaxError: Expected identifier after 'callif' condition"); }
+                                    }
+                                )
+                            }
+                        );
+                        pointer += 2 + counter;
                     }
                     &_ => {
-                        panic!("SyntaxError: Impossible keyword {:?}", tokens[pointer]);
+                        panic!("KernelError: Impossible keyword {:?}", tokens[pointer]);
                     }
                 }
             }
@@ -447,10 +581,20 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
                             pointer += 1;
                         }
                     }
-
+                    ";" | "," | "(" | ")" | "[" | "]" | ":" => { 
+                        pointer += 1; 
+                    }
                     &_ => {
                         panic!("LexerError: Impossible Token {:?}", tokens[pointer]);
                     }
+                }
+            }
+            Token::Identifier(s) => { 
+                if s == "EOF" {
+                    return ast;
+                }
+                else {
+                    panic!("SyntaxError: Unexpected identifier outside of instruction context: {:?}", s);
                 }
             }
             _ => { panic!("SyntaxError: Unexpected token {:?}", tokens[pointer]); }
