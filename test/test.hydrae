@@ -1,0 +1,25 @@
+{
+    label test_block;
+    
+    let x = 42;
+    let y = 3.14;
+    let name = "hello world";
+    let flag = true;
+    let other = false;
+    
+    print x;
+    input;
+    
+    if x > 5 jump bigger;
+    if x == 10 callif helper;
+    
+    let result = (x + y) * 2 - 1;
+    let logic = true && false || !true ^^ false;
+    
+    call helper;
+    return;
+    exit;
+    goto end_label;
+    
+    label end_label;
+}
