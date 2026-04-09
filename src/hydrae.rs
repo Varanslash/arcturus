@@ -438,6 +438,9 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
                     }
                     "jumpif" | "callif" => {
                         let mut counter = 1;
+                        let mut pendingand = Vec::new();
+                        let mut pendingxor = Vec::new();
+                        let mut pendingor = Vec::new();
                         loop {
                             match &tokens[pointer+1+counter] {
                                 Token::Punct(p) => { 
@@ -516,15 +519,15 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
                                             counter += 2; 
                                         }
                                         "&&" => {
-                                            ast.push(Node::Logic("and".to_string()));
+                                            pendingand.push("and".to_string());
                                             counter += 1;
                                         }
                                         "||" => {
-                                            ast.push(Node::Logic("or".to_string()));
+                                            pendingor.push("or".to_string());
                                             counter += 1;
                                         }
                                         "^^" => {
-                                            ast.push(Node::Logic("xor".to_string()));
+                                            pendingxor.push("xor".to_string());
                                             counter += 1;
                                         }
                                         &_ => { panic!("SyntaxError: Unexpected token in *if expression: {:?}", tokens[pointer+1+counter]); }
@@ -537,6 +540,15 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
                                 Token::Bool(b) => { ast.push(Node::PushBool(*b)); counter += 1; }
                                 _ => { panic!("SyntaxError: Unexpected token in {} expression: {:?}", k, tokens[pointer+1+counter]); }
                             }
+                        }
+                        for item in pendingand {
+                            ast.push(Node::Logic(item));
+                        }
+                        for item in pendingor {
+                            ast.push(Node::Logic(item));
+                        }
+                        for item in pendingxor {
+                            ast.push(Node::Logic(item));
                         }
                         ast.push(
                             if k == "jumpif" {
@@ -603,12 +615,222 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
     return ast;
 }
 
+fn serialization(ast: Vec<Node>, debug: bool) -> String {
+    let mut assembly = String::new();
+
+    for node in ast {
+        if debug {
+            println!("Serializing node: {:?}", node);
+        }
+        match node {
+            Node::Start         => { assembly.push_str("ARC_START\n"); }
+            Node::End           => { assembly.push_str("ARC_END\n"); }
+            Node::Delim         => { assembly.push_str("ARC_DELIM\n"); }
+            Node::Label(name)   => { assembly.push_str(&format!("LABEL {}\n", name)); }
+            Node::Exit          => { assembly.push_str("ARC_END\n"); }
+            Node::Jump(label)   => { assembly.push_str(&format!("JUMP {}\n", label)); }
+            Node::Return        => { assembly.push_str("RET\n"); }
+            Node::Call(label)   => { assembly.push_str(&format!("CALL {}\n", label)); }
+            Node::JumpIf(label) => { assembly.push_str(&format!("JUMP_IF {}\n", label)); }
+            Node::CallIf(label) => { assembly.push_str(&format!("CALL_IF {}\n", label)); }
+            Node::Let(var)      => { assembly.push_str(&format!("STORE {}\n", var)); }
+            Node::Add(count)    => { assembly.push_str(&format!("ADD {}\n", count)); }
+            Node::Sub(count)    => { assembly.push_str(&format!("SUB {}\n", count)); }
+            Node::Mul(count)    => { assembly.push_str(&format!("MUL {}\n", count)); }
+            Node::Div(count)    => { assembly.push_str(&format!("DIV {}\n", count)); }
+            Node::Mod(count)    => { assembly.push_str(&format!("MOD {}\n", count)); }
+            Node::Compare(opcode) => { 
+                let op = match opcode {
+                    0xC3 => "EQ",
+                    0xC4 => "GE",
+                    0xC5 => "GT",
+                    0xC6 => "LE",
+                    0xC7 => "LT",
+                    0xC8 => "NE",
+                    _ => panic!("SerializationError: Invalid comparison opcode")
+                };
+                assembly.push_str(&format!("COMPARE {}\n", op));
+            }
+            Node::Print(expr) => {
+                match *expr {
+                    Node::Load(ref var)     => { assembly.push_str(&format!("LOAD {}\n", var)); },
+                    Node::PushInt(i)        => { assembly.push_str(&format!("PUSH_INT {}\n", i)); },
+                    Node::PushFloat(f)      => { assembly.push_str(&format!("PUSH_DEC {}\n", f)); },
+                    Node::PushString(ref s) => { assembly.push_str(&format!("PUSH_STR {}\n", s)); },
+                    Node::PushBool(b)       => { assembly.push_str(&format!("PUSH_BOOL {}\n", b)); },
+                    _ => { panic!("SerializationError: Invalid expression in print statement"); }
+                }
+                assembly.push_str("PRINT\n");
+            }
+            Node::Input(var) => {
+                assembly.push_str("INPUT\n");
+                assembly.push_str(&format!("STORE {}\n", var));
+            }
+            Node::Logic(op) => {
+                match op.as_str() {
+                    "and" => { assembly.push_str("AND\n"); }
+                    "or" => { assembly.push_str("OR\n"); }
+                    "xor" => { assembly.push_str("XOR\n"); }
+                    &_ => { panic!("SerializationError: Invalid logic operator"); }
+                }
+            }
+            Node::Load(var) => { assembly.push_str(&format!("LOAD {}\n", var)); }
+            Node::PushInt(i) => { assembly.push_str(&format!("PUSH_INT {}\n", i)); }
+            Node::PushFloat(f) => { assembly.push_str(&format!("PUSH_DEC {}\n", f)); }
+            Node::PushString(s) => { assembly.push_str(&format!("PUSH_STR {}\n", s)); }
+            Node::PushBool(b) => { assembly.push_str(&format!("PUSH_BOOL {}\n", b)); }
+        }
+    }
+    return assembly;
+}
+
+fn assemble(code: String) -> Vec<u8> {
+    let mut bytecode = Vec::new();
+    let mut linecount = 0;
+    for line in code.lines() {
+        let bline: Vec<&str> = line.split_whitespace().collect();
+        if bline.is_empty() { continue; }  // skip empty lines
+        
+        match bline[0] {
+            "ADD" => {
+                bytecode.push(0x01);
+                let count = bline[1].parse::<u8>().unwrap();
+                bytecode.push(count);
+            }
+            "SUB" => {
+                bytecode.push(0x02);
+                let count = bline[1].parse::<u8>().unwrap();
+                bytecode.push(count);
+            }
+            "MUL" => {
+                bytecode.push(0x03);
+                let count = bline[1].parse::<u8>().unwrap();
+                bytecode.push(count);
+            }
+            "DIV" => {
+                bytecode.push(0x04);
+                let count = bline[1].parse::<u8>().unwrap();
+                bytecode.push(count);
+            }
+            "MOD" => {
+                bytecode.push(0x05);
+                let count = bline[1].parse::<u8>().unwrap();
+                bytecode.push(count);
+            }
+            "STORE" => {
+                bytecode.push(0x10);
+                let var_name = bline[1..].join(" ");
+                let bytes = var_name.as_bytes();
+                bytecode.push(bytes.len() as u8);
+                bytecode.extend_from_slice(bytes);
+            }
+            "PUSH_INT" => {
+                bytecode.push(0x11);
+                let value = bline[1].parse::<i64>().unwrap();
+                bytecode.extend_from_slice(&value.to_le_bytes());
+            }
+            "PUSH_STR" => {
+                bytecode.push(0x12);
+                let string = bline[1..].join(" ");
+                let bytes = string.as_bytes();
+                bytecode.push(bytes.len() as u8);
+                bytecode.extend_from_slice(bytes);
+            }
+            "PUSH_BOOL" => {
+                bytecode.push(0x13);
+                match bline[1] {
+                    "true" => bytecode.push(0x01),
+                    "false" => bytecode.push(0x00),
+                    _ => panic!("AssemblerError: Invalid bool")
+                }
+            }
+            "PUSH_DEC" => {
+                bytecode.push(0x14);
+                let value = bline[1].parse::<f64>().unwrap();
+                bytecode.extend_from_slice(&value.to_le_bytes());
+            }
+            "LOAD" => {
+                bytecode.push(0x15);
+                let var_name = bline[1..].join(" ");
+                let bytes = var_name.as_bytes();
+                bytecode.push(bytes.len() as u8);
+                bytecode.extend_from_slice(bytes);
+            }
+            "COMPARE" => {
+                bytecode.push(0xC0);
+                match bline[1] {
+                    "EQ" => bytecode.push(0xC3),
+                    "GT" => bytecode.push(0xC5),
+                    "GE" => bytecode.push(0xC4),
+                    "LT" => bytecode.push(0xC7),
+                    "LE" => bytecode.push(0xC6),
+                    "NE" => bytecode.push(0xC8),
+                    _ => panic!("AssemblerError: Unknown comparison")
+                }
+            }
+            "JUMP_IF" => {
+                bytecode.push(0xC1);
+                let label = bline[1..].join(" ");
+                let bytes = label.as_bytes();
+                bytecode.push(bytes.len() as u8);
+                bytecode.extend_from_slice(bytes);
+            }
+            "CALL_IF" => {
+                bytecode.push(0xC2);
+                let label = bline[1..].join(" ");
+                let bytes = label.as_bytes();
+                bytecode.push(bytes.len() as u8);
+                bytecode.extend_from_slice(bytes);
+            }
+            "AND" => bytecode.push(0xD0),
+            "OR" => bytecode.push(0xD1),
+            "NOT" => bytecode.push(0xD2),
+            "XOR" => bytecode.push(0xD3),
+            "LABEL" => {
+                bytecode.push(0xD4);
+                let label = bline[1..].join(" ");
+                let bytes = label.as_bytes();
+                bytecode.push(bytes.len() as u8);
+                bytecode.extend_from_slice(bytes);
+            }
+            "PRINT" => bytecode.push(0xE0),
+            "INPUT" => bytecode.push(0xE1),
+            "CALL" => {
+                bytecode.push(0xE2);
+                let label = bline[1..].join(" ");
+                let bytes = label.as_bytes();
+                bytecode.push(bytes.len() as u8);
+                bytecode.extend_from_slice(bytes);
+            }
+            "RET" => bytecode.push(0xE3),
+            "JUMP" => {
+                bytecode.push(0xE4);
+                let label = bline[1..].join(" ");
+                let bytes = label.as_bytes();
+                bytecode.push(bytes.len() as u8);
+                bytecode.extend_from_slice(bytes);
+            }
+            "ARC_START" => bytecode.push(0xF0),
+            "ARC_END" => bytecode.push(0xF1),
+            "ARC_DELIM" => bytecode.push(0xF2),
+            _ => {
+                panic!("AssemblySyntaxError: Unknown mnemonic '{}' at line {}", bline[0], linecount);
+            }
+        }
+        linecount += 1;
+    }
+    return bytecode;
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     let filepath = args[1].clone();
     let outputpath = args[1].clone() + ".avm";
     let mut stopatlex = false;
+    let mut stopatparse = false;
+    let mut stopatserialize = false;
     let mut debug: bool = false;
+
     match args.len() {
         2 => { debug = false; },
         1 => { panic!("Usage: hydrae <input file> [flags]");},
@@ -617,6 +839,8 @@ fn main() {
                 match arg.as_str() {
                     "-d" | "--debug" => { debug = true; },
                     "-l" | "--lex" => { stopatlex = true; debug = false; },
+                    "-p" | "--parse" => { stopatparse = true; debug = false; },
+                    "-s" | "--serialize" => { stopatserialize = true; debug = false; },
                     _ => { debug = false; },
                 } 
             }
@@ -624,11 +848,25 @@ fn main() {
     }
     let input = fs::read_to_string(filepath).expect("KernelError: Failed to read input file");
     let preprocessedtext = &preproc(&input, debug);
+
     let tokenstream = &lex(preprocessedtext.to_string(), debug);
     if stopatlex {
         fs::write(outputpath, format!("{:?}", tokenstream)).expect("KernelError: Failed to write tokens to file");
         return;
     }
-    let parsed = parse(tokenstream.to_vec(), debug);
-    println!("Parsed AST: {:?}", parsed);
+
+    let ast = &parse(tokenstream.to_vec(), debug);
+    if stopatparse {
+        fs::write(outputpath, format!("{:#?}", ast)).expect("KernelError: Failed to write AST to file");
+        return;
+    }
+
+    let asm = &serialization(ast.to_vec(), debug);
+    if stopatserialize {
+        fs::write(outputpath, asm).expect("KernelError: Failed to write assembly to file");
+        return;
+    }
+
+    let bytecode = &assemble(asm.to_string());
+    fs::write(outputpath, bytecode).expect("KernelError: Failed to write bytecode to file");
 }
