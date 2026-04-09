@@ -11,4 +11,8 @@ path = "src/muphrid.rs"
 name = "hydrae"
 path = "src/hydrae.rs"
 
+[[bin]]
+name = "spica"
+path = "src/spica.rs"
+
 [dependencies]
