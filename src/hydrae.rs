@@ -293,7 +293,7 @@ fn lex(source: String, debug: bool) -> Vec<Token> {
         Token::Identifier(s) => !s.is_empty(),
         _ => true
     });
-    tokens.push(Token::Identifier("EOF".to_string()));
+    tokens.push(Token::Identifier("HYD_EOF".to_string()));
     return tokens;
 }
 
@@ -318,10 +318,12 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
                         }
                     }
                     "return" => {
+                        assert_eq!(tokens[pointer+1], Token::Punct(";".to_string()), "SyntaxError: Should not have values/operands after 'return'");
                         ast.push(Node::Return);
                         pointer += 1;
                     }
                     "exit" => {
+                        assert_eq!(tokens[pointer+1], Token::Punct(";".to_string()), "SyntaxError: Should not have values/operands after 'exit'");
                         ast.push(Node::Exit);
                         pointer += 1;
                     }
@@ -365,6 +367,8 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
                     }
                     "let" => {
                         let mut counter = 1;
+                        assert_eq!(matches!(&tokens[pointer+1], Token::Identifier(_)), true, "SyntaxError: Expected identifier after 'let'");
+                        assert_eq!(tokens[pointer+2], Token::Punct("=".to_string()), "SyntaxError: Expected '=' in let expression");
                         loop {
                             match &tokens[pointer+2+counter] {
                                 Token::Punct(p) if p == ";" => { break; }
@@ -441,6 +445,7 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
                         let mut pendingand = Vec::new();
                         let mut pendingxor = Vec::new();
                         let mut pendingor = Vec::new();
+                        assert_eq!(&tokens[pointer+1], &Token::Identifier(String::new()), "SyntaxError: Expected identifier after '{k}'");
                         loop {
                             match &tokens[pointer+1+counter] {
                                 Token::Punct(p) => { 
@@ -453,7 +458,7 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
                                                 Token::Float(f) => { ast.push(Node::PushFloat(*f)); }
                                                 Token::String(s) => { ast.push(Node::PushString(s.clone())); }
                                                 Token::Bool(b) => { ast.push(Node::PushBool(*b)); }
-                                                _ => { panic!("SyntaxError: Unexpected token in *if expression: {:?}", tokens[pointer+2+counter+1]); }
+                                                _ => { panic!("SyntaxError: Unexpected token in {k} expression: {:?}", tokens[pointer+2+counter+1]); }
                                             } 
                                             ast.push(Node::Compare(0xC5)); 
                                             counter += 2; 
@@ -465,7 +470,7 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
                                                 Token::Float(f) => { ast.push(Node::PushFloat(*f)); }
                                                 Token::String(s) => { ast.push(Node::PushString(s.clone())); }
                                                 Token::Bool(b) => { ast.push(Node::PushBool(*b)); }
-                                                _ => { panic!("SyntaxError: Unexpected token in *if expression: {:?}", tokens[pointer+2+counter+1]); }
+                                                _ => { panic!("SyntaxError: Unexpected token in {k} expression: {:?}", tokens[pointer+2+counter+1]); }
                                             } 
                                             ast.push(Node::Compare(0xC7)); 
                                             counter += 2; 
@@ -477,7 +482,7 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
                                                 Token::Float(f) => { ast.push(Node::PushFloat(*f)); }
                                                 Token::String(s) => { ast.push(Node::PushString(s.clone())); }
                                                 Token::Bool(b) => { ast.push(Node::PushBool(*b)); }
-                                                _ => { panic!("SyntaxError: Unexpected token in *if expression: {:?}", tokens[pointer+2+counter+1]); }
+                                                _ => { panic!("SyntaxError: Unexpected token in {k} expression: {:?}", tokens[pointer+2+counter+1]); }
                                             } 
                                             ast.push(Node::Compare(0xC4)); 
                                             counter += 2; 
@@ -489,7 +494,7 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
                                                 Token::Float(f) => { ast.push(Node::PushFloat(*f)); }
                                                 Token::String(s) => { ast.push(Node::PushString(s.clone())); }
                                                 Token::Bool(b) => { ast.push(Node::PushBool(*b)); }
-                                                _ => { panic!("SyntaxError: Unexpected token in *if expression: {:?}", tokens[pointer+2+counter+1]); }
+                                                _ => { panic!("SyntaxError: Unexpected token in {k} expression: {:?}", tokens[pointer+2+counter+1]); }
                                             } 
                                             ast.push(Node::Compare(0xC6)); 
                                             counter += 2; 
@@ -501,7 +506,7 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
                                                 Token::Float(f) => { ast.push(Node::PushFloat(*f)); }
                                                 Token::String(s) => { ast.push(Node::PushString(s.clone())); }
                                                 Token::Bool(b) => { ast.push(Node::PushBool(*b)); }
-                                                _ => { panic!("SyntaxError: Unexpected token in *if expression: {:?}", tokens[pointer+2+counter+1]); }
+                                                _ => { panic!("SyntaxError: Unexpected token in {k} expression: {:?}", tokens[pointer+2+counter+1]); }
                                             } 
                                             ast.push(Node::Compare(0xC3)); 
                                             counter += 2; 
@@ -513,7 +518,7 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
                                                 Token::Float(f) => { ast.push(Node::PushFloat(*f)); }
                                                 Token::String(s) => { ast.push(Node::PushString(s.clone())); }
                                                 Token::Bool(b) => { ast.push(Node::PushBool(*b)); }
-                                                _ => { panic!("SyntaxError: Unexpected token in *if expression: {:?}", tokens[pointer+2+counter+1]); }
+                                                _ => { panic!("SyntaxError: Unexpected token in {k} expression: {:?}", tokens[pointer+2+counter+1]); }
                                             } 
                                             ast.push(Node::Compare(0xC8)); 
                                             counter += 2; 
@@ -530,7 +535,7 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
                                             pendingxor.push("xor".to_string());
                                             counter += 1;
                                         }
-                                        &_ => { panic!("SyntaxError: Unexpected token in *if expression: {:?}", tokens[pointer+1+counter]); }
+                                        &_ => { panic!("SyntaxError: Unexpected token in {k} expression: {:?}", tokens[pointer+1+counter]); }
                                     }
                                 }
                                 Token::Identifier(s) => { ast.push(Node::Load(s.clone())); counter += 1; }
@@ -544,10 +549,10 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
                         for item in pendingand {
                             ast.push(Node::Logic(item));
                         }
-                        for item in pendingor {
+                        for item in pendingxor {
                             ast.push(Node::Logic(item));
                         }
-                        for item in pendingxor {
+                        for item in pendingor {
                             ast.push(Node::Logic(item));
                         }
                         ast.push(
@@ -602,7 +607,7 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
                 }
             }
             Token::Identifier(s) => { 
-                if s == "EOF" {
+                if s == "HYD_EOF" {
                     return ast;
                 }
                 else {
