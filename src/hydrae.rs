@@ -74,7 +74,7 @@ fn preproc(input: &str, debug: bool) -> String {
                     println!("Read block content: '{}'", readblock);
                 }
                 output.push_str(&readblock);
-            },
+            }
             _ => {},
         }
     }
@@ -689,7 +689,7 @@ fn serialization(ast: Vec<Node>, debug: bool) -> String {
     return assembly;
 }
 
-fn assemble(code: String) -> Vec<u8> {
+fn native_assemble(code: String) -> Vec<u8> {
     let mut bytecode = Vec::new();
     let mut linecount = 0;
     for line in code.lines() {
@@ -827,13 +827,90 @@ fn assemble(code: String) -> Vec<u8> {
     return bytecode;
 }
 
+fn x86_64_assemble(code: String) -> String {
+    let mut assembly = String::new();
+    let mut labelid = 0;
+    assembly.push_str("section .text\n");
+    assembly.push_str("global _start\n");
+    assembly.push_str("_start:\n");
+    for line in code.lines() {
+        let bline: Vec<&str> = line.split_whitespace().collect();
+        if bline.is_empty() { continue; }  // skip empty lines
+        match bline[0] {
+            "LABEL" => {
+                assembly.push_str(&format!("{}:\n", bline[1]));
+            }
+            "JUMP" => {
+                assembly.push_str(&format!("jmp {}\n", bline[1]));
+            }
+            "CALL" => {
+                assembly.push_str(&format!("call {}\n", bline[1]));
+            }
+            "JUMP_IF" => {
+                assembly.push_str("pop rax\n");
+                assembly.push_str("cmp rax, 1\n");
+                assembly.push_str(&format!("je {}\n", bline[1]));
+            }
+            "CALL_IF" => {
+                assembly.push_str("pop rax\n");
+                assembly.push_str("cmp rax, 0\n");
+                assembly.push_str(&format!("je {}\n", format!("HYD_label_{}", labelid)));
+                assembly.push_str(&format!("call {}\n", bline[1]));
+                assembly.push_str(&format!("{}:\n", format!("HYD_label_{}", labelid)));
+                labelid += 1;
+            }
+            "RET" => {
+                assembly.push_str("ret\n");
+            }
+            "ADD" => {
+                assembly.push_str("pop rbx\n");
+                assembly.push_str("pop rax\n");
+                assembly.push_str(&format!("add rax, rbx\n"));
+                assembly.push_str("push rax\n");
+            }
+            "SUB" => {
+                assembly.push_str("pop rbx\n");
+                assembly.push_str("pop rax\n");
+                assembly.push_str(&format!("sub rax, rbx\n"));
+                assembly.push_str("push rax\n");
+            }
+            "MUL" => {
+                assembly.push_str("pop rbx\n");
+                assembly.push_str("pop rax\n");
+                assembly.push_str(&format!("imul rax, rbx\n"));
+                assembly.push_str("push rax\n");
+            }
+            "DIV" => {
+                assembly.push_str("pop rbx\n");
+                assembly.push_str("pop rax\n");
+                assembly.push_str("cqo\n");
+                assembly.push_str("idiv rbx\n");
+                assembly.push_str("push rax\n");
+            }
+            "MOD" => {
+                assembly.push_str("pop rbx\n");
+                assembly.push_str("pop rax\n");
+                assembly.push_str("cqo\n");
+                assembly.push_str("idiv rbx\n");
+                assembly.push_str("push rdx\n");
+            }
+            _ => {}
+        }
+    }
+    return assembly;
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     let filepath = args[1].clone();
-    let outputpath = args[1].clone() + ".avm";
+    if filepath.ends_with(".arc") == false {
+        panic!("UsageError: Input file must have .arc extension");
+    }
+    let outputpath = args[1].clone().replace(".arc", ".avm");
     let mut stopatlex = false;
     let mut stopatparse = false;
     let mut stopatserialize = false;
+    let mut compilermode = "avm";
     let mut debug: bool = false;
 
     match args.len() {
@@ -846,32 +923,42 @@ fn main() {
                     "-l" | "--lex" => { stopatlex = true; debug = false; },
                     "-p" | "--parse" => { stopatparse = true; debug = false; },
                     "-s" | "--serialize" => { stopatserialize = true; debug = false; },
+                    "-x" | "--x86_64" => { compilermode = "x86_64"; debug = false; },
                     _ => { debug = false; },
                 } 
             }
         },
     }
-    let input = fs::read_to_string(filepath).expect("KernelError: Failed to read input file");
+    let input = fs::read_to_string(filepath).expect("CompileError: Failed to read input file");
     let preprocessedtext = &preproc(&input, debug);
 
     let tokenstream = &lex(preprocessedtext.to_string(), debug);
     if stopatlex {
-        fs::write(outputpath, format!("{:?}", tokenstream)).expect("KernelError: Failed to write tokens to file");
+        fs::write(outputpath, format!("{:?}", tokenstream)).expect("CompileError: Failed to write tokens to file");
         return;
     }
 
     let ast = &parse(tokenstream.to_vec(), debug);
     if stopatparse {
-        fs::write(outputpath, format!("{:#?}", ast)).expect("KernelError: Failed to write AST to file");
+        fs::write(outputpath, format!("{:#?}", ast)).expect("CompileError: Failed to write AST to file");
         return;
     }
 
     let asm = &serialization(ast.to_vec(), debug);
     if stopatserialize {
-        fs::write(outputpath, asm).expect("KernelError: Failed to write assembly to file");
+        fs::write(outputpath, asm).expect("CompileError: Failed to write assembly to file");
         return;
     }
 
-    let bytecode = &assemble(asm.to_string());
-    fs::write(outputpath, bytecode).expect("KernelError: Failed to write bytecode to file");
+    match compilermode {
+        "avm" => {
+            let bytecode = native_assemble(asm.to_string());
+            fs::write(outputpath, bytecode).expect("CompileError: Failed to write bytecode to file");
+        }
+        "x86_64" => {
+            let x86_64_code = x86_64_assemble(asm.to_string());
+            fs::write(outputpath.replace(".avm", ".asm"), x86_64_code).expect("CompileError: Failed to write x86_64 assembly to file");
+        }
+        _ => { panic!("CompileError: Invalid compilation mode"); }
+    }
 }
