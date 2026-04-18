@@ -1,5 +1,6 @@
 use std::fs;
 use std::env;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 enum Token {
@@ -51,9 +52,9 @@ enum LexerState {
     Number,
 }
 
-fn preproc(input: &str, debug: bool) -> String {
+fn preprocscope(input: &str, debug: bool) -> String {
     let mut output = String::from(input);
-    output.push_str("{ label HYD_EXITBLOCK; exit; label HYD_EXITBLOCK_END; }");
+    output.push_str("\n{ label HYD_EXITBLOCK; exit; label HYD_EXITBLOCK_END; }");
 
     for line in input.lines() {
         if debug {
@@ -78,11 +79,37 @@ fn preproc(input: &str, debug: bool) -> String {
             _ => {},
         }
     }
-
     return output;
 }
 
-fn lex(source: String, debug: bool) -> Vec<Token> {
+fn preprocdefine(input: &str, debug: bool) -> HashMap<String, String> {
+    let mut output = HashMap::new();
+    for line in input.lines() {
+        if debug {
+            println!("Processing line for defines: '{}'", line);
+        }
+
+        let bline: Vec<_> = line.split_whitespace().collect();
+        if bline.is_empty() { continue; }
+
+        match bline[0] {
+            "%define" => {
+                assert_eq!(bline[2], "as", "SyntaxError: No 'as' keyword in define directive");
+                if debug {
+                    println!("Found define directive with name: '{}' and value: '{}'", bline[1], bline[3]);
+                }
+                output.insert(bline[1].to_string(), bline[3].to_string());
+            }
+            _ => {},
+        }
+    }
+    if debug {
+        println!("PreprocDefine output: {:?}", output);
+    }
+    return output;
+}
+
+fn lex(source: String, debug: bool, addresstable: &HashMap<String, String>) -> Vec<Token> {
     let mut tokens = Vec::new();
     let keywords = vec!["label", "exit", "jump", "return", "call", "jumpif", "callif", "let", "print", "input"];
     let mut current = String::new();
@@ -294,6 +321,19 @@ fn lex(source: String, debug: bool) -> Vec<Token> {
         _ => true
     });
     tokens.push(Token::Identifier("HYD_EOF".to_string()));
+    for token in &mut tokens {
+        match token {
+            Token::Identifier(s) => {
+                if addresstable.contains_key(s) {
+                    if debug {
+                        println!("Replacing identifier '{}' with '{}'", s, addresstable.get(s).unwrap());
+                    }
+                    *token = Token::Identifier(addresstable.get(s).expect("LexerError: Identifier not found").clone());
+                }
+            }
+            _ => {}
+        }
+    }
     return tokens;
 }
 
@@ -838,20 +878,25 @@ fn x86_64_assemble(code: String) -> String {
         if bline.is_empty() { continue; }  // skip empty lines
         match bline[0] {
             "LABEL" => {
+                assembly.push_str(&format!("; LABEL {}\n", bline[1]));
                 assembly.push_str(&format!("{}:\n", bline[1]));
             }
             "JUMP" => {
+                assembly.push_str(&format!("; JUMP {}\n", bline[1]));
                 assembly.push_str(&format!("jmp {}\n", bline[1]));
             }
             "CALL" => {
+                assembly.push_str(&format!("; CALL {}\n", bline[1]));
                 assembly.push_str(&format!("call {}\n", bline[1]));
             }
             "JUMP_IF" => {
+                assembly.push_str(&format!("; JUMP_IF {}\n", bline[1]));
                 assembly.push_str("pop rax\n");
                 assembly.push_str("cmp rax, 1\n");
                 assembly.push_str(&format!("je {}\n", bline[1]));
             }
             "CALL_IF" => {
+                assembly.push_str(&format!("; CALL_IF {}\n", bline[1]));
                 assembly.push_str("pop rax\n");
                 assembly.push_str("cmp rax, 0\n");
                 assembly.push_str(&format!("je {}\n", format!("HYD_label_{}", labelid)));
@@ -860,27 +905,32 @@ fn x86_64_assemble(code: String) -> String {
                 labelid += 1;
             }
             "RET" => {
+                assembly.push_str("; RET\n");
                 assembly.push_str("ret\n");
             }
             "ADD" => {
+                assembly.push_str(&format!("; ADD {}\n", bline[1]));
                 assembly.push_str("pop rbx\n");
                 assembly.push_str("pop rax\n");
                 assembly.push_str(&format!("add rax, rbx\n"));
                 assembly.push_str("push rax\n");
             }
             "SUB" => {
+                assembly.push_str(&format!("; SUB {}\n", bline[1]));
                 assembly.push_str("pop rbx\n");
                 assembly.push_str("pop rax\n");
                 assembly.push_str(&format!("sub rax, rbx\n"));
                 assembly.push_str("push rax\n");
             }
             "MUL" => {
+                assembly.push_str(&format!("; MUL {}\n", bline[1]));
                 assembly.push_str("pop rbx\n");
                 assembly.push_str("pop rax\n");
                 assembly.push_str(&format!("imul rax, rbx\n"));
                 assembly.push_str("push rax\n");
             }
             "DIV" => {
+                assembly.push_str(&format!("; DIV {}\n", bline[1]));
                 assembly.push_str("pop rbx\n");
                 assembly.push_str("pop rax\n");
                 assembly.push_str("cqo\n");
@@ -888,15 +938,34 @@ fn x86_64_assemble(code: String) -> String {
                 assembly.push_str("push rax\n");
             }
             "MOD" => {
+                assembly.push_str(&format!("; MOD {}\n", bline[1]));
                 assembly.push_str("pop rbx\n");
                 assembly.push_str("pop rax\n");
                 assembly.push_str("cqo\n");
                 assembly.push_str("idiv rbx\n");
                 assembly.push_str("push rdx\n");
             }
+            "ARC_END" => {
+                assembly.push_str("; ARC_END\n");
+                assembly.push_str("jmp HYD_end\n");
+            }
+            "ARC_DELIM" => {
+                assembly.push_str("; ARC_DELIM\n");
+            }
+            "ARC_START" => {
+                assembly.push_str("; ARC_START\n");
+            }
+            "LOAD" => {
+                assembly.push_str(&format!("; LOAD {}\n", bline[1]));
+                assembly.push_str(&format!("mov rax, [0{}]\n", bline[1]));
+                assembly.push_str("push rax\n");
+            }
             _ => {}
         }
     }
+    assembly.push_str("HYD_end:\n");
+    assembly.push_str("hlt\n");
+    assembly.push_str("jmp HYD_end\n");
     return assembly;
 }
 
@@ -930,9 +999,10 @@ fn main() {
         },
     }
     let input = fs::read_to_string(filepath).expect("CompileError: Failed to read input file");
-    let preprocessedtext = &preproc(&input, debug);
+    let preprocessedtext = &preprocscope(&input, debug);
+    let addresstable = &preprocdefine(preprocessedtext, debug);
 
-    let tokenstream = &lex(preprocessedtext.to_string(), debug);
+    let tokenstream = &lex(preprocessedtext.to_string(), debug, addresstable);
     if stopatlex {
         fs::write(outputpath, format!("{:?}", tokenstream)).expect("CompileError: Failed to write tokens to file");
         return;
