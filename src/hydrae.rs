@@ -960,6 +960,50 @@ fn x86_64_assemble(code: String) -> String {
                 assembly.push_str(&format!("mov rax, [0{}]\n", bline[1]));
                 assembly.push_str("push rax\n");
             }
+            "STORE" => {
+                assembly.push_str(&format!("; STORE {}\n", bline[1]));
+                assembly.push_str("pop rax\n");
+                assembly.push_str(&format!("mov [0{}], rax\n", bline[1]));
+            }
+            "PUSH_INT" => {
+                assembly.push_str(&format!("; PUSH_INT {}\n", bline[1]));
+                assembly.push_str(&format!("push {}\n", bline[1]));
+            }
+            "PUSH_BOOL" => {
+                assembly.push_str(&format!("; PUSH_BOOL {}\n", bline[1]));
+                match bline[1] {
+                    "true" => assembly.push_str("push 1\n"),
+                    "false" => assembly.push_str("push 0\n"),
+                    _ => panic!("AssemblySyntaxError: Invalid boolean literal")
+                }
+            }
+            "AND" => {
+                assembly.push_str("; AND\n");
+                assembly.push_str("pop rbx\n");
+                assembly.push_str("pop rax\n");
+                assembly.push_str("and rax, rbx\n");
+                assembly.push_str("push rax\n");
+            }
+            "OR" => {
+                assembly.push_str("; OR\n");
+                assembly.push_str("pop rbx\n");
+                assembly.push_str("pop rax\n");
+                assembly.push_str("or rax, rbx\n");
+                assembly.push_str("push rax\n");
+            }
+            "XOR" => {
+                assembly.push_str("; XOR\n");
+                assembly.push_str("pop rbx\n");
+                assembly.push_str("pop rax\n");
+                assembly.push_str("xor rax, rbx\n");
+                assembly.push_str("push rax\n");
+            }
+            "NOT" => {
+                assembly.push_str("; NOT\n");
+                assembly.push_str("pop rax\n");
+                assembly.push_str("not rax\n");
+                assembly.push_str("push rax\n");
+            }
             _ => {}
         }
     }
