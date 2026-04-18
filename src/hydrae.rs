@@ -869,10 +869,12 @@ fn native_assemble(code: String) -> Vec<u8> {
 
 fn x86_64_assemble(code: String) -> String {
     let mut assembly = String::new();
+    let mut stringtable = String::new();
     let mut labelid = 0;
     assembly.push_str("section .text\n");
     assembly.push_str("global _start\n");
     assembly.push_str("_start:\n");
+    stringtable.push_str("section .data\n");
     for line in code.lines() {
         let bline: Vec<&str> = line.split_whitespace().collect();
         if bline.is_empty() { continue; }  // skip empty lines
@@ -969,6 +971,14 @@ fn x86_64_assemble(code: String) -> String {
                 assembly.push_str(&format!("; PUSH_INT {}\n", bline[1]));
                 assembly.push_str(&format!("push {}\n", bline[1]));
             }
+            "PUSH_STR" => {
+                assembly.push_str(&format!("; PUSH_STR {}\n", bline[1..].join(" ")));
+                let label = format!("HYD_str_{}", labelid);
+                stringtable.push_str(&format!("{} db '{}', 0\n", label, bline[1..].join(" ")));
+                assembly.push_str(&format!("lea rax, [{}]\n", label));
+                assembly.push_str("push rax\n");
+                labelid += 1;
+            }
             "PUSH_BOOL" => {
                 assembly.push_str(&format!("; PUSH_BOOL {}\n", bline[1]));
                 match bline[1] {
@@ -1010,6 +1020,7 @@ fn x86_64_assemble(code: String) -> String {
     assembly.push_str("HYD_end:\n");
     assembly.push_str("hlt\n");
     assembly.push_str("jmp HYD_end\n");
+    assembly.push_str(stringtable.as_str());
     return assembly;
 }
 
