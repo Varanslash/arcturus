@@ -564,14 +564,26 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
                                             counter += 2; 
                                         }
                                         "&&" => {
+                                            if pendingand.len() > 0 {
+                                                ast.push(Node::Logic(pendingand.pop().unwrap()));
+                                            }
                                             pendingand.push("and".to_string());
                                             counter += 1;
                                         }
                                         "||" => {
+                                            if pendingand.len() > 0 {
+                                                ast.push(Node::Logic(pendingand.pop().unwrap()));
+                                            }
+                                            if pendingxor.len() > 0 {
+                                                ast.push(Node::Logic(pendingxor.pop().unwrap()));
+                                            }
                                             pendingor.push("or".to_string());
                                             counter += 1;
                                         }
                                         "^^" => {
+                                            if pendingand.len() > 0 {
+                                                ast.push(Node::Logic(pendingand.pop().unwrap()));
+                                            }
                                             pendingxor.push("xor".to_string());
                                             counter += 1;
                                         }
@@ -586,14 +598,20 @@ fn parse(tokens: Vec<Token>, debug: bool) -> Vec<Node> {
                                 _ => { panic!("SyntaxError: Unexpected token in {} expression: {:?}", k, tokens[pointer+1+counter]); }
                             }
                         }
-                        for item in pendingand {
-                            ast.push(Node::Logic(item));
+                        if pendingand.len() > 0 {
+                            for item in pendingand {
+                                ast.push(Node::Logic(item));
+                            }
                         }
-                        for item in pendingxor {
-                            ast.push(Node::Logic(item));
+                        if pendingxor.len() > 0 {
+                            for item in pendingxor {
+                                ast.push(Node::Logic(item));
+                            }
                         }
-                        for item in pendingor {
-                            ast.push(Node::Logic(item));
+                        if pendingor.len() > 0 {
+                            for item in pendingor {
+                                ast.push(Node::Logic(item));
+                            }
                         }
                         ast.push(
                             if k == "jumpif" {
@@ -1027,7 +1045,7 @@ fn x86_64_assemble(code: String) -> String {
 fn main() {
     let args: Vec<String> = env::args().collect();
     let filepath = args[1].clone();
-    if filepath.ends_with(".arc") == false {
+    if !filepath.ends_with(".arc") {
         panic!("UsageError: Input file must have .arc extension");
     }
     let outputpath = args[1].clone().replace(".arc", ".avm");
@@ -1048,6 +1066,17 @@ fn main() {
                     "-p" | "--parse" => { stopatparse = true; debug = false; },
                     "-s" | "--serialize" => { stopatserialize = true; debug = false; },
                     "-x" | "--x86_64" => { compilermode = "x86_64"; debug = false; },
+                    "-h" | "--help" => { 
+                        println!("Usage: hydrae <input file>.arc [flags]");
+                        println!("Flags:");
+                        println!("  -d, --debug       Enable debug mode (prints debug report)");
+                        println!("  -l, --lex         Stop after lexing and output tokens");
+                        println!("  -p, --parse       Stop after parsing and output AST");
+                        println!("  -s, --serialize   Stop after serialization and output assembly");
+                        println!("  -x, --x86_64      Compile to x86_64 assembly instead of AVM bytecode");
+                        println!("  -h, --help        Show this help message");
+                        std::process::exit(0);
+                    }
                     _ => { debug = false; },
                 } 
             }
