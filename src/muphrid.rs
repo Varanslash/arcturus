@@ -105,8 +105,6 @@ fn main() {
         }
     }
 
-    println!("{:?}", labels);
-
     while ip < code.len() {
         if debug {
             println!("-----------------------------");
