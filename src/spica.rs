@@ -83,29 +83,8 @@ fn main() {
                     let value = bline[1].parse::<f64>().unwrap();
                     bytecode.extend_from_slice(&value.to_le_bytes());
                 }
-                "LOAD_INT" => {
+                "LOAD" | "LOAD_INT" | "LOAD_STR" | "LOAD_BOOL" | "LOAD_DEC" => {
                     bytecode.push(0x15);
-                    let var_name = bline[1..].join(" ");
-                    let bytes = var_name.as_bytes();
-                    bytecode.push(bytes.len() as u8);
-                    bytecode.extend_from_slice(bytes);
-                }
-                "LOAD_STR" => {
-                    bytecode.push(0x16);
-                    let var_name = bline[1..].join(" ");
-                    let bytes = var_name.as_bytes();
-                    bytecode.push(bytes.len() as u8);
-                    bytecode.extend_from_slice(bytes);
-                }
-                "LOAD_BOOL" => {
-                    bytecode.push(0x17);
-                    let var_name = bline[1..].join(" ");
-                    let bytes = var_name.as_bytes();
-                    bytecode.push(bytes.len() as u8);
-                    bytecode.extend_from_slice(bytes);
-                }
-                "LOAD_DEC" => {
-                    bytecode.push(0x18);
                     let var_name = bline[1..].join(" ");
                     let bytes = var_name.as_bytes();
                     bytecode.push(bytes.len() as u8);
@@ -260,34 +239,10 @@ fn main() {
                     assembly.push_str("\n");
                     ip += 9;
                 }
-                0x15 => { // LOAD_INT
+                0x15 => { // LOAD
                     let var_name_bytes = &code[ip + 2..ip + 2 + code[ip + 1] as usize];
                     let var_name = String::from_utf8(var_name_bytes.to_vec()).unwrap();
-                    assembly.push_str("LOAD_INT ");
-                    assembly.push_str(&var_name);
-                    assembly.push_str("\n");
-                    ip += 2 + code[ip + 1] as usize;
-                }
-                0x16 => { // LOAD_STR
-                    let var_name_bytes = &code[ip + 1..ip + 1 + code[ip + 1] as usize];
-                    let var_name = String::from_utf8(var_name_bytes.to_vec()).unwrap();
-                    assembly.push_str("LOAD_STR ");
-                    assembly.push_str(&var_name);
-                    assembly.push_str("\n");
-                    ip += 2 + code[ip + 1] as usize;
-                }
-                0x17 => { // LOAD_BOOL
-                    let var_name_bytes = &code[ip + 1..ip + 1 + code[ip + 1] as usize];
-                    let var_name = String::from_utf8(var_name_bytes.to_vec()).unwrap();
-                    assembly.push_str("LOAD_BOOL ");
-                    assembly.push_str(&var_name);
-                    assembly.push_str("\n");
-                    ip += 2 + code[ip + 1] as usize;
-                }
-                0x18 => { // LOAD_DEC
-                    let var_name_bytes = &code[ip + 1..ip + 1 + code[ip + 1] as usize];
-                    let var_name = String::from_utf8(var_name_bytes.to_vec()).unwrap();
-                    assembly.push_str("LOAD_DEC ");
+                    assembly.push_str("LOAD ");
                     assembly.push_str(&var_name);
                     assembly.push_str("\n");
                     ip += 2 + code[ip + 1] as usize;
